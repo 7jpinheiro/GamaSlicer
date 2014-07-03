@@ -1,5 +1,9 @@
 open Cil_types
 
+let get_opt = function
+  | Some x -> x
+  | None   -> raise (Invalid_argument "Empty Function behavior")
+
 (* Computes cfg for all functions and fills in info information on fundec (smaxstmid and sallsmts) *)
 let computeCfg () =
 	Globals.Functions.iter_on_fundecs
@@ -11,9 +15,10 @@ let computeCfg () =
 
 
 (* Visits Statements *)
-let visitStatements fd fs =
-	Format.printf"Statements.\n"
-
+let visitStatements fundec funspec list_behaviors =
+	let funbehavior = Cil.find_default_behavior funspec in
+	let post_condition = Ast_info.behavior_postcondition (get_opt funbehavior) Normal in
+	post_condition 
 
 (* Visits functions *)
 let visitFunctions () = 
@@ -22,7 +27,9 @@ let visitFunctions () =
       fun kf -> 
       	let fundec = Kernel_function.get_definition kf in
       	let funspec = Annotations.funspec kf in 
-        visitStatements fundec funspec
+      	let list_behaviors = Annotations.behaviors kf in 
+        let post_condt = visitStatements fundec funspec list_behaviors in
+        ()
 	)
 
   (* Main function *)
