@@ -14,7 +14,7 @@ let computeCfg () =
       	Cfg.prepareCFG fundec;
       	Cfg.computeCFGInfo fundec false  
 	)
-	
+
 (* Prints a predicate(condition in this case) *)
 let print_condtion cond =
 	Format.printf"Post_condition: %a\n" Printer.pp_predicate_named cond
@@ -34,17 +34,34 @@ let print_ss_postcondtion l =
 	 			  print_condtion y  
 	) l
 	
+(* Converts the generated predicates to stmt language *)
+let gen_po predicate = "proof"
+
+
+(* Replaces the predicate on the statement and generates a new predicate resulting from the replacement *)
+let replace_condition statement predicate =
+	predicate
+
+(* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
+let rec vcgen list_statements predicate =
+	match list_statements with
+	|[] -> []
+	| s::stail -> 
+		let sub_predicate = replace_condition s predicate in
+		let po = gen_po sub_predicate in
+		(s,po)::(vcgen stail sub_predicate)
+
 
 (* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
-	Format.printf"Getting list of statements\n";
+	Format.printf"Getting list of statements.\n";
 	let list_statements = fundec.sallstmts in
 	List.rev list_statements
 
 
 (* Get condition depeding ond the func_bulidcondtion input *)
 let get_Condtion  funspec func_buildcondition =
-	Format.printf"Getting Contdition\n";
+	Format.printf"Getting Condition.\n";
 	let funbehavior = Cil.find_default_behavior funspec in
 	let post_condition =  func_buildcondition (get_opt funbehavior) Normal in
 	post_condition 
