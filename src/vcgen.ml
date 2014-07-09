@@ -37,10 +37,30 @@ let print_ss_postcondtion l =
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = "proof"
 
+let replace_instruction inst predicate = 
+	match inst with
+	| Set (lval,exp,location) ->
+	| Call (lval_op,exp,exp_list,location) ->
+	| Skip location -> predicate 
+    (* Falta asm e code_annot *)
 
-(* Replaces the predicate on the statement and generates a new predicate resulting from the replacement *)
-let replace_condition statement predicate =
-	predicate
+
+(* Matches the statement with the definitions and replaces the predicate
+ on the statement, generating a new predicate resulting from the replacement *)
+let replace_statement statement predicate =
+	match statement.kind with 
+	| Instr i -> replace_instruction i predicate
+	| Return _ -> Format.pp_print_string out "<return>"
+	| Goto _ -> Format.pp_print_string out "<goto>"
+	| Break _ -> Format.pp_print_string out "<break>"
+ 	| Continue _ -> Format.pp_print_string out "<continue>"
+ 	| If (e,_,_,_) -> Format.fprintf out "if %a" Printer.pp_exp e
+ 	| Switch (e,_,_,_) -> Format.fprintf out "switch %a" Printer.pp_exp e
+ 	| Loop _ -> Format.fprintf out "<loop>"
+ 	| Block _ -> Format.fprintf out "<block>"
+ 	| UnspecifiedSequence _ -> Format.fprintf out "<unspecified sequence>"
+ 	| TryFinally _ | TryExcept _ -> Format.fprintf out "<try>"
+	
 
 (* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
 let rec vcgen list_statements predicate =
