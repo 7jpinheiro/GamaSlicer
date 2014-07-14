@@ -66,12 +66,22 @@ let get_logicvar_name_list logicv_list =
 	List.map (fun x -> x.lv_name) logicv_list
 
 
+(* Replaces the assgiment on the predicate *)
+let replace_assigment lval exp predicate =
+	let folded_exp = Cil.constFold false exp in 
+	let exp_term = Logic_utils.expr_to_term true folded_exp in
+	let term_lval = Logic.lval_to_term_lval true lval in 
+	let names_lval = get_logicvar_name_list (get_term_logic_vars term_lval) in
+	predicate.map 
+	(* Resto do algoritmo -> Se for possivel mapear um predicado, basta applicar o map, onde ele vai percorrer o predicado todo 
+	 e quando encontrar uma variavel com o mesmo nome que o do lval substitui pela expressão convertida em termo. *)  
+
 
 (* Matches the instruction with the definitions and replaces the predicate
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction inst predicate = 
 	match inst with
-	| Set (lval,exp,location) -> 
+	| Set (lval,exp,location) -> replace_assigment lval exp 
 	| Call (lval_op,exp,exp_list,location) ->
 	| Skip location -> predicate 
     (* Falta asm e code_annot *)
