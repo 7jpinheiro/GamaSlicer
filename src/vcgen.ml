@@ -37,9 +37,41 @@ let print_ss_postcondtion l =
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = "proof"
 
+(* Gets a list of logic_vars acording to the type of parameter e and the function *)
+let get_logic_vars e function = 
+	let var_set = function e in
+	let var_list = Set.elements var_set in
+	List.map (fun x -> Cil.cvar_to_lvar x ) var_list 
+
+(* Gets a list of logic_vars from a lval *)
+let get_lval_logic_vars lval =
+	get_logic_vars lval Cil.extract_varinfos_from_lval
+
+(* Gets a list of logic_vars from a exp *)
+let get_exp_logic_vars exp =
+	get_logic_vars exp Cil.extract_varinfos_from_exp
+
+(* Gets a list of logic_vars from a predicate *)
+let get_predicate_logic_vars predicate = 
+	let var_set = Cil.extract_free_logicvars_from_predicate predicate in
+	Set.elements var_set
+
+(* Gets a list of logic_vars from a term *)
+let get_term_logic_vars term = 
+	let var_set = Cil.extract_free_logicvars_from_term term in
+	Set.elements var_set 
+
+(* Gets the name of the logic_var *)
+let get_logicvar_name_list logicv_list =
+	List.map (fun x -> x.lv_name) logicv_list
+
+
+
+(* Matches the instruction with the definitions and replaces the predicate
+ on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction inst predicate = 
 	match inst with
-	| Set (lval,exp,location) ->
+	| Set (lval,exp,location) -> 
 	| Call (lval_op,exp,exp_list,location) ->
 	| Skip location -> predicate 
     (* Falta asm e code_annot *)
