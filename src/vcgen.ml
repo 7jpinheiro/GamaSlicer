@@ -66,22 +66,55 @@ let get_logicvar_name_list logicv_list =
 	List.map (fun x -> x.lv_name) logicv_list
 
 
-(* Replaces the assgiment on the predicate *)
-let replace_assigment lval exp predicate =
+let r_assignment predicate exp_term var_name =
+	match predicate with
+	|	Pfalse																												(*	always-false predicate.	*)
+	|	Ptrue																												(*	always-true predicate.	*)
+	|	Papp _
+	|	Pseparated of term list
+	|	Prel (relation,term1,term2)																						(*	comparison of two terms.	*)
+	|	Pand (p1, p2)																													(*	conjunction	*)
+	|	Por (p1, p2)																												(*	disjunction.	*)
+	|	Pxor (p1, p2)																												(*	logical xor.	*)
+	|	Pimplies (p1, p2)																											(*	implication.	*)
+	|	Piff of (p1, p2)																											(*	equivalence.	*)
+	|	Pnot p																															(*	negation.	*)
+	|	Pif (term,p1,p2)																												(*	conditional	*)
+	|	Plet (logic_info,p1)																						(*	definition of a local variable	*)
+	|	Pforall (quantifiers,p1)																						(*	universal quantification.	*)
+	|	Pexists (quantifiers,p1)																						(*	existential quantification.	*)
+	|	Pat (p1,logic_label)																		(*	predicate refers to a particular program point.	*)
+	|	Pvalid_read (logic_label,term)																	(*	the given locations are valid for reading.	*)
+	|	Pvalid (logic_label,term)																					(*	the given locations are valid.	*)
+	|	Pinitialized (logic_label,term)																		(*	the given locations are initialized.	*)
+	|	Pallocable (logic_label,term)																		(*	the given locations can be allocated.	*)
+	|	Pfreeable (logic_label,term)																			(*	the given locations can be free.	*)
+	|	Pfresh (logic_label1,logic_label2,term1,term2)				(*	\fresh(pointer, n) A memory block of n bytes is newly allocated to the pointer.	*)
+	|	Psubtype (term1,term2)
+
+(* Auxiliary function that maps a function over a predicate *)
+let raux_map ipredicate exp_term var_name func =
+	Cil_datatype.Identified_predicate.Map.map
+				(
+				  fun x -> func x.ip_c exp_term var_name
+				) ipredicate
+
+(* Replaces the predicate depending on the function given as argument *)
+let replace func lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
 	let exp_term = Logic_utils.expr_to_term true folded_exp in
 	let term_lval = Logic.lval_to_term_lval true lval in 
 	let names_lval = get_logicvar_name_list (get_term_logic_vars term_lval) in
-	predicate.map 
-	(* Resto do algoritmo -> Se for possivel mapear um predicado, basta applicar o map, onde ele vai percorrer o predicado todo 
-	 e quando encontrar uma variavel com o mesmo nome que o do lval substitui pela expressão convertida em termo. *)  
+	let i_predicate = Logic_const.new_predicate predicate in 
+	Logic_const.pred_of_id_pred (raux_map i_predicate exp_term (List.hd names_lval) func)
+			
 
 
 (* Matches the instruction with the definitions and replaces the predicate
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction inst predicate = 
 	match inst with
-	| Set (lval,exp,location) -> replace_assigment lval exp 
+	| Set (lval,exp,location) -> replace r_assignment lval exp predicate
 	| Call (lval_op,exp,exp_list,location) ->
 	| Skip location -> predicate 
     (* Falta asm e code_annot *)
