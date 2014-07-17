@@ -6,10 +6,12 @@ let get_opt = function
   | None   -> raise (Invalid_argument "Empty Function behavior")
 
 (* Gets a list of logic_vars acording to the type of parameter e and the function *)
-let get_logic_vars e function = 
-	let var_set = function e in
-	let var_list = Set.elements var_set in
-	List.map (fun x -> Cil.cvar_to_lvar x ) var_list 
+let get_logic_vars e func = 
+	let var_set = func e in
+	Cil_datatype.Varinfo.Set.fold 
+		(
+		 fun x acc -> (Cil.cvar_to_lvar x) :: acc
+		) var_set 
 
 (* Gets a list of logic_vars from a lval *)
 let get_lval_logic_vars lval =
@@ -22,32 +24,39 @@ let get_exp_logic_vars exp =
 (* Gets a list of logic_vars from a predicate *)
 let get_predicate_logic_vars predicate = 
 	let var_set = Cil.extract_free_logicvars_from_predicate predicate in
-	Set.elements var_set
+	Cil_datatype.Logic_var.Set.elements var_set
 
 (* Gets a list of logic_vars from a term *)
 let get_term_logic_vars term = 
 	let var_set = Cil.extract_free_logicvars_from_term term in
-	Set.elements var_set 
+	Cil_datatype.Logic_var.Set.elements var_set 
 
 (* Gets the name of the logic_var *)
 let get_logicvar_name_list logicv_list =
 	List.map (fun x -> x.lv_name) logicv_list
 
-(* Gets a name from tlval, if not a TVar returns "NOT_A_VARIABLE"*)
+(* Gets a name from tlval, if not a TVar returns "NOT_A_LOGIC_VARIABLE"*)
 let get_var_name_from_tlval (th,_) = 
 	match th with
 	|TVar logic_var -> logic_var.lv_name 
+	| _ -> "NOT_A_LOGIC_VARIABLE" 
+
+(* Gets a name from lval, if not a TVar returns "NOT_A_LOGIC_VARIABLE"*)
+let get_var_name_from_lval (lh,_) = 
+	match lh with
+	|Var varinfo -> varinfo.vname  
 	| _ -> "NOT_A_VARIABLE" 
 
 
+
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
-class replace_term_on_predicate exprterm var_name = object (self)
-	inherit Visitor.frama_c_copy
+class replace_term_on_predicate  exprterm var_name = object 
+	inherit Visitor.frama_c_inplace 
 	
 	method vterm t = 
 		match t.term_node with
 		| TLval term_lval ->
-			let var_name = get_var_name_from_tlval term_lval in
+			let name = get_var_name_from_tlval term_lval in
 			if (var_name == name) then exprterm else t;
 			DoChildren
 		| _ -> DoChildren
@@ -69,6 +78,10 @@ let computeCfg () =
 let print_condtion cond =
 	Format.printf"Post_condition: %a\n" Printer.pp_predicate_named cond
 
+let print_statement stmt =
+	Format.printf"%a\n" Printer.pp_stmt stmt
+
+
 (* Prints a list of statements *)
 let print_statements list_statements = 
 	List.iter
@@ -83,6 +96,14 @@ let print_ss_postcondtion l =
 	 fun (x,y) -> print_statements x;
 	 			  print_condtion y  
 	) l
+
+(* Prints a list of triples(at the moment pos are not printed) *)
+let print_ss_po_postcondtion l =
+	List.iter
+	(
+	 fun (x,_,z) -> print_statement x;
+	 			    print_condtion z
+	) l
 	
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = "proof"
@@ -92,11 +113,10 @@ let gen_po predicate = "proof"
 let replace lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
 	let exp_term = Logic_utils.expr_to_term true folded_exp in
-	let term_lval = Logic.lval_to_term_lval true lval in 
-	let names_lval = get_logicvar_name_list (get_term_logic_vars term_lval) in
-    let var_name = List.hd names_lval in
-    let new_predicate = Visitor.visitFramacPredicateNamed (new replace_term_on_predicate exp_term var_name) predicate in
-    new_predicate
+    let var_name = get_var_name_from_lval lval in
+    if (var_name == "NOT_A_VARIABLE") then 
+   		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate exp_term var_name) predicate 
+    	else predicate
 
 			
 
@@ -106,26 +126,27 @@ let replace lval exp predicate  =
 let replace_instruction inst predicate = 
 	match inst with
 	| Set (lval,exp,location) -> replace lval exp predicate
-	| Call (lval_op,exp,exp_list,location) ->
+	| Call (lval_op,exp,exp_list,location) -> predicate
 	| Skip location -> predicate 
-    (* Falta asm e code_annot *)
+    | Asm _ -> predicate
+    | Code_annot _ -> predicate
 
 
 (* Matches the statement with the definitions and replaces the predicate
  on the statement, generating a new predicate resulting from the replacement *)
 let replace_statement statement predicate =
-	match statement.kind with 
+	match statement.skind with 
 	| Instr i -> replace_instruction i predicate
-	| Return _ -> Format.pp_print_string out "<return>"
-	| Goto _ -> Format.pp_print_string out "<goto>"
-	| Break _ -> Format.pp_print_string out "<break>"
- 	| Continue _ -> Format.pp_print_string out "<continue>"
- 	| If (e,_,_,_) -> Format.fprintf out "if %a" Printer.pp_exp e
- 	| Switch (e,_,_,_) -> Format.fprintf out "switch %a" Printer.pp_exp e
- 	| Loop _ -> Format.fprintf out "<loop>"
- 	| Block _ -> Format.fprintf out "<block>"
- 	| UnspecifiedSequence _ -> Format.fprintf out "<unspecified sequence>"
- 	| TryFinally _ | TryExcept _ -> Format.fprintf out "<try>"
+	| Return _ -> predicate
+	| Goto _ -> predicate
+	| Break _ -> predicate
+ 	| Continue _ -> predicate
+ 	| If (e,_,_,_) -> predicate
+ 	| Switch (e,_,_,_) -> predicate
+ 	| Loop _ -> predicate
+ 	| Block _ -> predicate
+ 	| UnspecifiedSequence _ -> predicate
+ 	| TryFinally _ | TryExcept _ -> predicate
 	
 
 (* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
@@ -133,9 +154,9 @@ let rec vcgen list_statements predicate =
 	match list_statements with
 	|[] -> []
 	| s::stail -> 
-		let sub_predicate = replace_condition s predicate in
+		let sub_predicate = replace_statement s predicate in
 		let po = gen_po sub_predicate in
-		(s,po)::(vcgen stail sub_predicate)
+		(s,po,sub_predicate)::(vcgen stail sub_predicate)
 
 
 (* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
@@ -161,7 +182,8 @@ let apply_if_defition def kf =
       	let list_behaviors = Annotations.behaviors kf in 
         let post_condt = get_Condtion funspec  Ast_info.behavior_postcondition  in
         let list_statements = get_list_of_statements fundec in
-        [(list_statements,post_condt)]
+        let spo_list = vcgen list_statements post_condt in
+        spo_list	
 	|false -> []
 
 (* Visits functions *)
@@ -182,6 +204,6 @@ let visitFunctions () =
      Cfg.clearFileCFG c_file;
      computeCfg ();
      let list_stm_and_post = visitFunctions () in
-     print_ss_postcondtion list_stm_and_post
+     print_ss_po_postcondtion list_stm_and_post
      
 let () = Db.Main.extend run 
