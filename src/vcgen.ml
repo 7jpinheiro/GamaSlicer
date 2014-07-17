@@ -1,10 +1,60 @@
 open Cil_types
 
-
 (* Gets option *)
 let get_opt = function
   | Some x -> x
   | None   -> raise (Invalid_argument "Empty Function behavior")
+
+(* Gets a list of logic_vars acording to the type of parameter e and the function *)
+let get_logic_vars e function = 
+	let var_set = function e in
+	let var_list = Set.elements var_set in
+	List.map (fun x -> Cil.cvar_to_lvar x ) var_list 
+
+(* Gets a list of logic_vars from a lval *)
+let get_lval_logic_vars lval =
+	get_logic_vars lval Cil.extract_varinfos_from_lval
+
+(* Gets a list of logic_vars from a exp *)
+let get_exp_logic_vars exp =
+	get_logic_vars exp Cil.extract_varinfos_from_exp
+
+(* Gets a list of logic_vars from a predicate *)
+let get_predicate_logic_vars predicate = 
+	let var_set = Cil.extract_free_logicvars_from_predicate predicate in
+	Set.elements var_set
+
+(* Gets a list of logic_vars from a term *)
+let get_term_logic_vars term = 
+	let var_set = Cil.extract_free_logicvars_from_term term in
+	Set.elements var_set 
+
+(* Gets the name of the logic_var *)
+let get_logicvar_name_list logicv_list =
+	List.map (fun x -> x.lv_name) logicv_list
+
+(* Gets a name from tlval, if not a TVar returns "NOT_A_VARIABLE"*)
+let get_var_name_from_tlval (th,_) = 
+	match th with
+	|TVar logic_var -> logic_var.lv_name 
+	| _ -> "NOT_A_VARIABLE" 
+
+
+(* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
+class replace_term_on_predicate exprterm var_name = object (self)
+	inherit Visitor.frama_c_copy
+	
+	method vterm t = 
+		match t.term_node with
+		| TLval term_lval ->
+			let var_name = get_var_name_from_tlval term_lval in
+			if (var_name == name) then exprterm else t;
+			DoChildren
+		| _ -> DoChildren
+		
+	end
+
+
 
 (* Computes cfg for all functions and fills in info information on fundec (smaxstmid and sallsmts) *)
 let computeCfg () =
@@ -37,76 +87,17 @@ let print_ss_postcondtion l =
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = "proof"
 
-(* Gets a list of logic_vars acording to the type of parameter e and the function *)
-let get_logic_vars e function = 
-	let var_set = function e in
-	let var_list = Set.elements var_set in
-	List.map (fun x -> Cil.cvar_to_lvar x ) var_list 
 
-(* Gets a list of logic_vars from a lval *)
-let get_lval_logic_vars lval =
-	get_logic_vars lval Cil.extract_varinfos_from_lval
-
-(* Gets a list of logic_vars from a exp *)
-let get_exp_logic_vars exp =
-	get_logic_vars exp Cil.extract_varinfos_from_exp
-
-(* Gets a list of logic_vars from a predicate *)
-let get_predicate_logic_vars predicate = 
-	let var_set = Cil.extract_free_logicvars_from_predicate predicate in
-	Set.elements var_set
-
-(* Gets a list of logic_vars from a term *)
-let get_term_logic_vars term = 
-	let var_set = Cil.extract_free_logicvars_from_term term in
-	Set.elements var_set 
-
-(* Gets the name of the logic_var *)
-let get_logicvar_name_list logicv_list =
-	List.map (fun x -> x.lv_name) logicv_list
-
-
-let r_assignment predicate exp_term var_name =
-	match predicate with
-	|	Pfalse																												(*	always-false predicate.	*)
-	|	Ptrue																												(*	always-true predicate.	*)
-	|	Papp _
-	|	Pseparated of term list
-	|	Prel (relation,term1,term2)																						(*	comparison of two terms.	*)
-	|	Pand (p1, p2)																													(*	conjunction	*)
-	|	Por (p1, p2)																												(*	disjunction.	*)
-	|	Pxor (p1, p2)																												(*	logical xor.	*)
-	|	Pimplies (p1, p2)																											(*	implication.	*)
-	|	Piff of (p1, p2)																											(*	equivalence.	*)
-	|	Pnot p																															(*	negation.	*)
-	|	Pif (term,p1,p2)																												(*	conditional	*)
-	|	Plet (logic_info,p1)																						(*	definition of a local variable	*)
-	|	Pforall (quantifiers,p1)																						(*	universal quantification.	*)
-	|	Pexists (quantifiers,p1)																						(*	existential quantification.	*)
-	|	Pat (p1,logic_label)																		(*	predicate refers to a particular program point.	*)
-	|	Pvalid_read (logic_label,term)																	(*	the given locations are valid for reading.	*)
-	|	Pvalid (logic_label,term)																					(*	the given locations are valid.	*)
-	|	Pinitialized (logic_label,term)																		(*	the given locations are initialized.	*)
-	|	Pallocable (logic_label,term)																		(*	the given locations can be allocated.	*)
-	|	Pfreeable (logic_label,term)																			(*	the given locations can be free.	*)
-	|	Pfresh (logic_label1,logic_label2,term1,term2)				(*	\fresh(pointer, n) A memory block of n bytes is newly allocated to the pointer.	*)
-	|	Psubtype (term1,term2)
-
-(* Auxiliary function that maps a function over a predicate *)
-let raux_map ipredicate exp_term var_name func =
-	Cil_datatype.Identified_predicate.Map.map
-				(
-				  fun x -> func x.ip_c exp_term var_name
-				) ipredicate
-
-(* Replaces the predicate depending on the function given as argument *)
-let replace func lval exp predicate  =
+(* Replaces the predicate  *)
+let replace lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
 	let exp_term = Logic_utils.expr_to_term true folded_exp in
 	let term_lval = Logic.lval_to_term_lval true lval in 
 	let names_lval = get_logicvar_name_list (get_term_logic_vars term_lval) in
-	let i_predicate = Logic_const.new_predicate predicate in 
-	Logic_const.pred_of_id_pred (raux_map i_predicate exp_term (List.hd names_lval) func)
+    let var_name = List.hd names_lval in
+    let new_predicate = Visitor.visitFramacPredicateNamed (new replace_term_on_predicate exp_term var_name) predicate in
+    new_predicate
+
 			
 
 
@@ -114,7 +105,7 @@ let replace func lval exp predicate  =
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction inst predicate = 
 	match inst with
-	| Set (lval,exp,location) -> replace r_assignment lval exp predicate
+	| Set (lval,exp,location) -> replace lval exp predicate
 	| Call (lval_op,exp,exp_list,location) ->
 	| Skip location -> predicate 
     (* Falta asm e code_annot *)
