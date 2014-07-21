@@ -5,6 +5,43 @@ let get_opt = function
   | Some x -> x
   | None   -> raise (Invalid_argument "Empty Function behavior")
 
+
+(* Prints a predicate(condition in this case) *)
+let print_condtion cond =
+	Format.printf"Post_condition: %a\n" Printer.pp_predicate_named cond
+
+(* Prints a statement *)
+let print_statement stmt =
+	Format.printf"%a\n" Printer.pp_stmt stmt
+
+(* Prints a term *)
+let print_term term =
+	Format.printf"Term: %a\n" Printer.pp_term term
+
+(* Prints a list of statements *)
+let print_statements list_statements = 
+	List.iter
+		(
+		 fun s -> Format.printf"%a\n" Printer.pp_stmt s
+		) list_statements
+
+(* Prints a List of tuples of a list of statements and a condition *)
+let print_ss_postcondtion l =
+	List.iter
+	(
+	 fun (x,y) -> print_statements x;
+	 			  print_condtion y  
+	) l
+
+(* Prints a list of triples(at the moment pos are not printed) *)
+let print_ss_po_postcondtion l =
+	List.iter
+	(
+	 fun (x,_,z) -> print_statement x;
+	 			    print_condtion z
+	) l
+	
+
 (* Gets a list of logic_vars acording to the type of parameter e and the function *)
 let get_logic_vars e func = 
 	let var_set = func e in
@@ -53,12 +90,12 @@ let get_var_name_from_lval (lh,_) =
 class replace_term_on_predicate prj  exprterm var_name = object (self)
 	inherit Visitor.frama_c_copy  prj 
 	
-	method vterm t = 
+	method vterm t =
 		match t.term_node with
 		| TLval term_lval ->
 			let name = get_var_name_from_tlval term_lval in
 		    let result = if (var_name == name) then exprterm else t in
-			Cil.ChangeDoChildrenPost(result, fun result -> result)
+			Cil.ChangeTo(result)
 		| _ -> Cil.DoChildren
 		
 	end
@@ -74,37 +111,7 @@ let computeCfg () =
       	Cfg.computeCFGInfo fundec false  
 	)
 
-(* Prints a predicate(condition in this case) *)
-let print_condtion cond =
-	Format.printf"Post_condition: %a\n" Printer.pp_predicate_named cond
 
-let print_statement stmt =
-	Format.printf"%a\n" Printer.pp_stmt stmt
-
-
-(* Prints a list of statements *)
-let print_statements list_statements = 
-	List.iter
-		(
-		 fun s -> Format.printf"%a\n" Printer.pp_stmt s
-		) list_statements
-
-(* Prints a List of tuples of a list of statements and a condition *)
-let print_ss_postcondtion l =
-	List.iter
-	(
-	 fun (x,y) -> print_statements x;
-	 			  print_condtion y  
-	) l
-
-(* Prints a list of triples(at the moment pos are not printed) *)
-let print_ss_po_postcondtion l =
-	List.iter
-	(
-	 fun (x,_,z) -> print_statement x;
-	 			    print_condtion z
-	) l
-	
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = "proof"
 
@@ -114,7 +121,7 @@ let replace lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
 	let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
     let var_name = get_var_name_from_lval lval in
-    if (var_name == "NOT_A_VARIABLE") then 
+    if (var_name <> "NOT_A_VARIABLE") then 
    		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate (Project.current ()) exp_term var_name) predicate 
     	else predicate
 
