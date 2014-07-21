@@ -50,16 +50,16 @@ let get_var_name_from_lval (lh,_) =
 
 
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
-class replace_term_on_predicate  exprterm var_name = object 
-	inherit Visitor.frama_c_inplace 
+class replace_term_on_predicate prj  exprterm var_name = object (self)
+	inherit Visitor.frama_c_copy  prj 
 	
 	method vterm t = 
 		match t.term_node with
 		| TLval term_lval ->
 			let name = get_var_name_from_tlval term_lval in
-			if (var_name == name) then exprterm else t;
-			DoChildren
-		| _ -> DoChildren
+		    let result = if (var_name == name) then exprterm else t in
+			Cil.ChangeDoChildrenPost(result, fun result -> result)
+		| _ -> Cil.DoChildren
 		
 	end
 
@@ -112,10 +112,10 @@ let gen_po predicate = "proof"
 (* Replaces the predicate  *)
 let replace lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
-	let exp_term = Logic_utils.expr_to_term true folded_exp in
+	let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
     let var_name = get_var_name_from_lval lval in
     if (var_name == "NOT_A_VARIABLE") then 
-   		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate exp_term var_name) predicate 
+   		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate (Project.current ()) exp_term var_name) predicate 
     	else predicate
 
 			
