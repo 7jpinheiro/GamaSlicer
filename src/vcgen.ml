@@ -1,5 +1,38 @@
 open Cil_types
 
+type po = 
+{ 
+ proof_obligation : string;
+}
+
+type vcgen_type =
+| SimpleS 
+(*| BlockS  of vcgen_result list
+| WhileS  of vcgen_result list
+*)
+
+type vcgen_result = 
+{
+	mutable statement : stmt ;
+	mutable po : po ;
+	mutable predicate : predicate named;
+	mutable stype : vcgen_type
+}
+
+
+let build_vcgen_type typei = 
+	match typei with
+	|SimpleS -> SimpleS
+
+
+let build_vcgen_resut statement po predicate typei =
+	{
+		statement = statement;
+		po = po;
+		predicate = predicate;
+		stype = build_vcgen_type typei ; 
+	}
+
 (* Gets option *)
 let get_opt = function
   | Some x -> x
@@ -12,7 +45,7 @@ let print_condtion cond =
 
 (* Prints a statement *)
 let print_statement stmt =
-	Format.printf"%a\n" Printer.pp_stmt stmt
+	Format.printf"Statement: %a\n" Printer.pp_stmt stmt
 
 (* Prints a term *)
 let print_term term =
@@ -34,11 +67,11 @@ let print_ss_postcondtion l =
 	) l
 
 (* Prints a list of triples(at the moment pos are not printed) *)
-let print_ss_po_postcondtion l =
+let print_vcgen_result l =
 	List.iter
 	(
-	 fun (x,_,z) -> print_statement x;
-	 			    print_condtion z
+	 fun (x) -> print_statement x.statement;
+	 			    print_condtion x.predicate
 	) l
 	
 
@@ -113,7 +146,7 @@ let computeCfg () =
 
 
 (* Converts the generated predicates to stmt language *)
-let gen_po predicate = "proof"
+let gen_po predicate = {proof_obligation ="proof";}
 
 
 (* Replaces the predicate  *)
@@ -143,28 +176,53 @@ let replace_instruction inst predicate =
  on the statement, generating a new predicate resulting from the replacement *)
 let replace_statement statement predicate =
 	match statement.skind with 
-	| Instr i -> replace_instruction i predicate
-	| Return _ -> predicate
-	| Goto _ -> predicate
-	| Break _ -> predicate
- 	| Continue _ -> predicate
- 	| If (e,_,_,_) -> predicate
- 	| Switch (e,_,_,_) -> predicate
- 	| Loop _ -> predicate
- 	| Block _ -> predicate
- 	| UnspecifiedSequence _ -> predicate
- 	| TryFinally _ | TryExcept _ -> predicate
+	| Instr i -> 
+			let new_predicate = replace_instruction i predicate in
+			let po = gen_po new_predicate in
+			build_vcgen_resut statement po new_predicate SimpleS
+	| Return _ ->
+			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+	| Goto _ -> 
+			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+	| Break _ ->
+			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| Continue _ -> 
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| If (e,b1,b2,loc) ->
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| Switch (e,_,_,_) ->
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| Loop _ -> 
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| Block _ ->
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| UnspecifiedSequence _ ->
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
+ 	| TryFinally _ | TryExcept _ -> 
+ 			let po = gen_po predicate in
+			build_vcgen_resut statement po predicate SimpleS
 	
 
 (* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
-let rec vcgen list_statements predicate =
+let rec sequence list_statements predicate =
 	match list_statements with
 	|[] -> []
 	| s::stail -> 
-		let sub_predicate = replace_statement s predicate in
-		let po = gen_po sub_predicate in
-		(s,po,sub_predicate)::(vcgen stail sub_predicate)
+		let vcgen_result = replace_statement s predicate in
+		vcgen_result::(sequence stail vcgen_result.predicate)
 
+
+let vcgen list_statements predicate =
+	sequence list_statements predicate
 
 (* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
@@ -211,6 +269,6 @@ let visitFunctions () =
      Cfg.clearFileCFG c_file;
      computeCfg ();
      let list_stm_and_post = visitFunctions () in
-     print_ss_po_postcondtion list_stm_and_post
+     print_vcgen_result list_stm_and_post
      
 let () = Db.Main.extend run 
