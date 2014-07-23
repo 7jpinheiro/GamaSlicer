@@ -4,33 +4,44 @@ type po =
 { 
  proof_obligation : string;
 }
-
-type vcgen_type =
-| SimpleS 
-(*| BlockS  of vcgen_result list
-| WhileS  of vcgen_result list
-*)
-
-type vcgen_result = 
+and vcgen_result = 
 {
 	mutable statement : stmt ;
 	mutable po : po ;
 	mutable predicate : predicate named;
-	mutable stype : vcgen_type
+	mutable stype : vcgen_type ;
 }
+and vcgen_type =
+| SimpleS 
+| IfS  of vcgen_result list * vcgen_result list
+| BlockS of vcgen_result list 
+(*| WhileS  of vcgen_result list
+*)
 
 
-let build_vcgen_type typei = 
-	match typei with
-	|SimpleS -> SimpleS
 
 
-let build_vcgen_resut statement po predicate typei =
+
+
+
+(* Converts the generated predicates to stmt language *)
+let gen_po predicate = {proof_obligation ="proof";}
+
+
+let build_vcgen_result_simple statement predicate  =
 	{
 		statement = statement;
-		po = po;
+		po =  gen_po predicate;
 		predicate = predicate;
-		stype = build_vcgen_type typei ; 
+		stype = SimpleS; 
+	}
+
+let build_vcgen_result_if statement predicate vcgen_result_list1 vcgen_result_list2  =
+	{
+		statement = statement;
+		po =  gen_po predicate;
+		predicate = predicate;
+		stype = IfS  (vcgen_result_list1,vcgen_result_list2) ; 
 	}
 
 (* Gets option *)
@@ -145,9 +156,6 @@ let computeCfg () =
 	)
 
 
-(* Converts the generated predicates to stmt language *)
-let gen_po predicate = {proof_obligation ="proof";}
-
 
 (* Replaces the predicate  *)
 let replace lval exp predicate  =
@@ -158,7 +166,14 @@ let replace lval exp predicate  =
    		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate (Project.current ()) exp_term var_name) predicate 
     	else predicate
 
-			
+
+
+let rec sequence list_statements predicate func =
+	match list_statements with
+	|[] -> []
+	| s::stail -> 
+		let vcgen_result = func s predicate in
+		vcgen_result::(sequence stail vcgen_result.predicate func)				
 
 
 (* Matches the instruction with the definitions and replaces the predicate
@@ -174,55 +189,49 @@ let replace_instruction inst predicate =
 
 (* Matches the statement with the definitions and replaces the predicate
  on the statement, generating a new predicate resulting from the replacement *)
-let replace_statement statement predicate =
+let rec replace_statement_wp statement predicate =
 	match statement.skind with 
 	| Instr i -> 
 			let new_predicate = replace_instruction i predicate in
-			let po = gen_po new_predicate in
-			build_vcgen_resut statement po new_predicate SimpleS
+			build_vcgen_result_simple statement new_predicate 
 	| Return _ ->
-			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+			build_vcgen_result_simple statement predicate 
 	| Goto _ -> 
-			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+			build_vcgen_result_simple statement  predicate 
 	| Break _ ->
-			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+			build_vcgen_result_simple statement  predicate  
  	| Continue _ -> 
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate  
  	| If (e,b1,b2,loc) ->
  			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			let logic_e = Logic_utils.expr_to_term ~cast:true e in
+ 			let vcgen_result_b1_list = List.rev (sequence b1.bstmts predicate replace_statement_wp) in
+ 			let vcgen_result_b2_list = List.rev (sequence b2.bstmts predicate replace_statement_wp) in
+ 			let vcgen_result_b1 = List.hd vcgen_result_b1_list in
+ 			let vcgen_result_b2 = List.hd vcgen_result_b2_list in 
+ 			let new_predicate = Logic_const.pif (logic_e, vcgen_result_b1.predicate, vcgen_result_b2.predicate) in
+		    build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
  	| Switch (e,_,_,_) ->
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate 
  	| Loop _ -> 
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate 
  	| Block _ ->
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate 
  	| UnspecifiedSequence _ ->
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate  
  	| TryFinally _ | TryExcept _ -> 
- 			let po = gen_po predicate in
-			build_vcgen_resut statement po predicate SimpleS
+ 			build_vcgen_result_simple statement  predicate  
 	
-
-(* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
-let rec sequence list_statements predicate =
+let rec sequence_wp list_statements predicate =
 	match list_statements with
 	|[] -> []
 	| s::stail -> 
-		let vcgen_result = replace_statement s predicate in
-		vcgen_result::(sequence stail vcgen_result.predicate)
+		let vcgen_result = replace_statement_wp s predicate in
+		vcgen_result::(sequence_wp stail vcgen_result.predicate)
 
-
+(* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
 let vcgen list_statements predicate =
-	sequence list_statements predicate
+	sequence_wp list_statements predicate
 
 (* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
