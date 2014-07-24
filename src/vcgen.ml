@@ -1,33 +1,29 @@
 open Cil_types
 
+(* Datatype that stores the stmt proof obligation *)
 type po = 
 { 
- proof_obligation : string;
-}
+ proof_obligation : string;				
+}(* Datatype that stores the vcgen_result  *)
 and vcgen_result = 
 {
-	mutable statement : stmt ;
-	mutable po : po ;
-	mutable predicate : predicate named;
-	mutable stype : vcgen_type ;
-}
+	mutable statement : stmt ;										(* Statement that originated the result *)
+	mutable po : po ;												(* Stores stmt proof obligation  *)
+	mutable predicate : predicate named;							(* Stores the result predicate from wp calculus *)
+	mutable stype : vcgen_type ;									(* Stores the statement type *)
+}(* Datatype that stores the type of statement, 
+each vcgen_result list comes from a block of that statement *)
 and vcgen_type =
-| SimpleS 
-| IfS  of vcgen_result list * vcgen_result list
-| BlockS of vcgen_result list 
-(*| WhileS  of vcgen_result list
-*)
-
-
-
-
-
+| SimpleS 															(* The statement is SimpleS, if contains no block *)
+| IfS  of vcgen_result list * vcgen_result list 					(* The statement is Ifs, if contains a If with blocks *)
+| BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
+(*| WhileS  of vcgen_result list *)
 
 
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = {proof_obligation ="proof";}
 
-
+(* Builds vcgen_result with simple type *)
 let build_vcgen_result_simple statement predicate  =
 	{
 		statement = statement;
@@ -36,6 +32,7 @@ let build_vcgen_result_simple statement predicate  =
 		stype = SimpleS; 
 	}
 
+(* Builds vcgen_result with Ifs type *)
 let build_vcgen_result_if statement predicate vcgen_result_list1 vcgen_result_list2  =
 	{
 		statement = statement;
@@ -155,7 +152,14 @@ let computeCfg () =
       	Cfg.computeCFGInfo fundec false  
 	)
 
-
+(* Tests if the vcgen_result list is empty, if it is returns the predicate true,
+ if contains elements returns the last resulting predicate *)
+let ifVcgenResultIsEmpty vcgen_result_list =
+	match vcgen_result_list with
+	| [] -> Logic_const.ptrue
+	| l  -> 
+		let last_vcgen_result = List.hd (List.rev l) in
+		last_vcgen_result.predicate
 
 (* Replaces the predicate  *)
 let replace lval exp predicate  =
@@ -167,7 +171,7 @@ let replace lval exp predicate  =
     	else predicate
 
 
-
+(* Generic sequence rule *)
 let rec sequence list_statements predicate func =
 	match list_statements with
 	|[] -> []
@@ -187,8 +191,10 @@ let replace_instruction inst predicate =
     | Code_annot _ -> predicate
 
 
+
+
 (* Matches the statement with the definitions and replaces the predicate
- on the statement, generating a new predicate resulting from the replacement *)
+ on the statement, generating a new predicate resulting from the replacement of wp *)
 let rec replace_statement_wp statement predicate =
 	match statement.skind with 
 	| Instr i -> 
@@ -203,13 +209,12 @@ let rec replace_statement_wp statement predicate =
  	| Continue _ -> 
  			build_vcgen_result_simple statement  predicate  
  	| If (e,b1,b2,loc) ->
- 			let po = gen_po predicate in
  			let logic_e = Logic_utils.expr_to_term ~cast:true e in
- 			let vcgen_result_b1_list = List.rev (sequence b1.bstmts predicate replace_statement_wp) in
- 			let vcgen_result_b2_list = List.rev (sequence b2.bstmts predicate replace_statement_wp) in
- 			let vcgen_result_b1 = List.hd vcgen_result_b1_list in
- 			let vcgen_result_b2 = List.hd vcgen_result_b2_list in 
- 			let new_predicate = Logic_const.pif (logic_e, vcgen_result_b1.predicate, vcgen_result_b2.predicate) in
+ 			let vcgen_result_b1_list = sequence (List.rev b1.bstmts) predicate replace_statement_wp in
+ 			let vcgen_result_b2_list = sequence (List.rev b2.bstmts) predicate replace_statement_wp in
+ 			let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
+ 			let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
+ 			let new_predicate = Logic_const.pif (logic_e, newpredicateb1, newpredicateb2) in
 		    build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
  	| Switch (e,_,_,_) ->
  			build_vcgen_result_simple statement  predicate 
@@ -221,7 +226,9 @@ let rec replace_statement_wp statement predicate =
  			build_vcgen_result_simple statement  predicate  
  	| TryFinally _ | TryExcept _ -> 
  			build_vcgen_result_simple statement  predicate  
-	
+
+
+(* Sequence rule of weakeast precondition calculus *)	
 let rec sequence_wp list_statements predicate =
 	match list_statements with
 	|[] -> []
@@ -229,7 +236,7 @@ let rec sequence_wp list_statements predicate =
 		let vcgen_result = replace_statement_wp s predicate in
 		vcgen_result::(sequence_wp stail vcgen_result.predicate)
 
-(* Genetares proof obligations, and returns a list with tuples (statement,proof obligation) *)
+(* Genetares proof obligations, and returns a list with vcgen_result *)
 let vcgen list_statements predicate =
 	sequence_wp list_statements predicate
 
