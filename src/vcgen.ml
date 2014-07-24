@@ -184,13 +184,18 @@ let rec sequence list_statements predicate func =
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction inst predicate = 
 	match inst with
-	| Set (lval,exp,location) -> replace lval exp predicate
+	| Set (lval,exp,location) -> replace lval exp predicate 						(* Wp assigment rule *)
 	| Call (lval_op,exp,exp_list,location) -> predicate
 	| Skip location -> predicate 
     | Asm _ -> predicate
     | Code_annot _ -> predicate
 
-
+(* Conditional wp rule, with sequence rule already aplied to the two blocks*)
+let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_result_b2_list =
+ 	let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
+ 	let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
+ 	let new_predicate = Logic_const.pif (exp_term, newpredicateb1, newpredicateb2) in
+	build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
 
 
 (* Matches the statement with the definitions and replaces the predicate
@@ -212,10 +217,7 @@ let rec replace_statement_wp statement predicate =
  			let logic_e = Logic_utils.expr_to_term ~cast:true e in
  			let vcgen_result_b1_list = sequence (List.rev b1.bstmts) predicate replace_statement_wp in
  			let vcgen_result_b2_list = sequence (List.rev b2.bstmts) predicate replace_statement_wp in
- 			let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
- 			let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
- 			let new_predicate = Logic_const.pif (logic_e, newpredicateb1, newpredicateb2) in
-		    build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
+ 			conditional_wp statement logic_e predicate vcgen_result_b1_list vcgen_result_b2_list
  	| Switch (e,_,_,_) ->
  			build_vcgen_result_simple statement  predicate 
  	| Loop _ -> 
