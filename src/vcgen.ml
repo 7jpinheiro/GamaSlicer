@@ -17,7 +17,7 @@ and vcgen_type =
 | SimpleS 															(* The statement is SimpleS, if contains no block *)
 | IfS  of vcgen_result list * vcgen_result list 					(* The statement is Ifs, if contains a If with blocks *)
 | BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
-(*| WhileS  of vcgen_result list *)
+| LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
 
 
 (* Converts the generated predicates to stmt language *)
@@ -39,6 +39,15 @@ let build_vcgen_result_if statement predicate vcgen_result_list1 vcgen_result_li
 		po =  gen_po predicate;
 		predicate = predicate;
 		stype = IfS  (vcgen_result_list1,vcgen_result_list2) ; 
+	}
+
+(* Builds vcgen_result with WhileS type *)
+let build_vcgen_result_loop statement invariant vcgen_result_list   =
+	{
+		statement = statement;
+		po =  gen_po invariant;
+		predicate = invariant;
+		stype = LoopS vcgen_result_list ; 
 	}
 
 (* Gets option *)
@@ -126,6 +135,29 @@ let get_var_name_from_lval (lh,_) =
 	| _ -> "NOT_A_VARIABLE" 
 
 
+(* If code content is type AInvariant returns the predicate, else true *)
+let get_predicate_named code_content = 
+	match code_content with 
+	| AInvariant (bh_list,isnormall,pred) -> pred
+	| _ -> Logic_const.ptrue
+	
+(* Gets an invariant from a code annotation *)
+let get_invariant cod_annot = 
+	let content = cod_annot.annot_content in
+	get_predicate_named content 
+
+
+(* Builds invariant from a list of code annotations aplying the logic conector && *)
+let build_invariant cod_annot_list predicate =
+    List.fold_right
+	(
+	 fun x acc -> 
+	 		if Logic_utils.is_invariant x 
+	 		then 
+	 			let inv = get_invariant x in
+	 			Logic_const.pand (inv,acc) 
+	 		else acc
+	) cod_annot_list predicate
 
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
 class replace_term_on_predicate prj  exprterm var_name = object (self)
@@ -220,8 +252,10 @@ let rec replace_statement_wp statement predicate =
  			conditional_wp statement logic_e predicate vcgen_result_b1_list vcgen_result_b2_list
  	| Switch (e,_,_,_) ->
  			build_vcgen_result_simple statement  predicate 
- 	| Loop _ -> 
- 			build_vcgen_result_simple statement  predicate 
+ 	| Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
+ 			let invariant = build_invariant ca_list Logic_const.ptrue in
+ 			let vcgen_result_list = sequence (List.rev block.bstmts) predicate replace_statement_wp in
+ 			build_vcgen_result_loop statement invariant vcgen_result_list
  	| Block _ ->
  			build_vcgen_result_simple statement  predicate 
  	| UnspecifiedSequence _ ->
