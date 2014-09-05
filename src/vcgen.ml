@@ -1,9 +1,20 @@
 open Cil_types
+open Plugin
+open Printer
+open Why3 
+
+module Self = 
+  Register
+    (struct
+       let name = "gamaslicer" 
+       let shortname = "gamaslicer"
+       let help = "A frama-c plugin that implements assertion based slicing"
+     end)
 
 (* Datatype that stores the stmt proof obligation *)
 type po = 
 { 
- proof_obligation : string;				
+ proof_obligation : Term.term;				
 }(* Datatype that stores the vcgen_result  *)
 and vcgen_result = 
 {
@@ -21,7 +32,7 @@ and vcgen_type =
 
 
 (* Converts the generated predicates to stmt language *)
-let gen_po predicate = {proof_obligation ="proof";}
+let gen_po predicate = {proof_obligation =Term.t_true;}
 
 (* Builds vcgen_result with simple type *)
 let build_vcgen_result_simple statement predicate  =
@@ -58,21 +69,21 @@ let get_opt = function
 
 (* Prints a predicate(condition in this case) *)
 let print_condtion cond =
-	Format.printf"Post_condition: %a\n" Printer.pp_predicate_named cond
+	Format.printf"Post_condition: %a\n" pp_predicate_named cond
 
 (* Prints a statement *)
 let print_statement stmt =
-	Format.printf"Statement: %a\n" Printer.pp_stmt stmt
+	Format.printf"Statement: %a\n" pp_stmt stmt
 
 (* Prints a term *)
 let print_term term =
-	Format.printf"Term: %a\n" Printer.pp_term term
+	Format.printf"Term: %a\n" pp_term term
 
 (* Prints a list of statements *)
 let print_statements list_statements = 
 	List.iter
 		(
-		 fun s -> Format.printf"%a\n" Printer.pp_stmt s
+		 fun s -> Format.printf"%a\n" pp_stmt s
 		) list_statements
 
 (* Prints a List of tuples of a list of statements and a condition *)
