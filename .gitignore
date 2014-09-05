@@ -8,3 +8,6 @@
 *.cmxs
 *.cmxa
 *.DS_Store
+src/.depend
+*.cmt
+src/GamaSlicer_DEP
