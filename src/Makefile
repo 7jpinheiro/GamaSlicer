@@ -4,6 +4,7 @@ FRAMAC_LIBDIR = $(shell frama-c -print-lib-path)
 PLUGIN_NAME     := GamaSlicer
 PLUGIN_CMO      := vcgen
 
+VERBOSEMAKE=yes
 
 WHYLIB := /usr/local/lib/why3/why3
 
