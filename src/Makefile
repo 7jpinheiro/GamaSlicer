@@ -6,8 +6,8 @@ PLUGIN_CMO      := vcgen
 
 VERBOSEMAKE=yes
 
-WHYLIB := /usr/local/lib/why3/why3
-
+#WHYLIB := /Users/jpinheiro/.opam/system/lib/why3
+WHYLIB := /usr/local/lib/ocaml/4.01.0/why3
 SHELL := /bin/bash
 
 PLUGIN_EXTRA_BYTE:= $(WHYLIB)/why3.cma

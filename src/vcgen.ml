@@ -1,13 +1,13 @@
 open Cil_types
 open Plugin
 open Printer
-open Why3 
+open Why3
 
 module Self = 
   Register
     (struct
-       let name = "gamaslicer" 
-       let shortname = "gamaslicer"
+       let name = "gamaSlicer" 
+       let shortname = "gamaSlicer"
        let help = "A frama-c plugin that implements assertion based slicing"
      end)
 
@@ -35,7 +35,7 @@ and vcgen_type =
 (* environment *)
 (***************)
 
-let env,config =
+let env,config,provers =
   try
     (* reads the Why3 config file *)
     Self.result "Loading Why3 configuration...";
@@ -43,8 +43,9 @@ let env,config =
     (* the [main] section of the config file *)
     let main : Whyconf.main = Whyconf.get_main config in
     let env : Env.env = Env.create_env (Whyconf.loadpath main) in
+    let provers = Whyconf.get_provers config in 
     Self.result "Why3 environment loaded.";
-    env,config
+    env,config,provers
   with e ->
     Self.fatal "Exception raised while reading Why3 environment:@ %a"
       Exn_printer.exn_printer e
@@ -69,7 +70,7 @@ let () = Self.result "Loading Why3 theories..."
 let int_type : Ty.ty = Ty.ty_int
 let int_theory : Theory.theory =
   try
-    (Env.read_theory env ["int"] "Int")
+    (Env.find_theory env ["int"] "Int")
   with e ->
     Self.fatal "Exception raised while loading int theory:@ %a"
       Exn_printer.exn_printer e
@@ -84,12 +85,12 @@ let gt_int : Term.lsymbol = find int_theory "infix >"
 let lt_int : Term.lsymbol = find int_theory "infix <"
 
 let computer_div_theory : Theory.theory =
-  Env.read_theory env ["int"] "ComputerDivision"
+  Env.find_theory env ["int"] "ComputerDivision"
 let div_int : Term.lsymbol = find computer_div_theory "div"
 
 (* real.Real theory *)
 let real_type : Ty.ty = Ty.ty_real
-let real_theory : Theory.theory = Env.read_theory env ["real"] "Real"
+let real_theory : Theory.theory = Env.find_theory env ["real"] "Real"
 let add_real : Term.lsymbol = find real_theory "infix +"
 let sub_real : Term.lsymbol = find real_theory "infix -"
 let minus_real : Term.lsymbol = find real_theory "prefix -"
@@ -97,7 +98,7 @@ let mul_real : Term.lsymbol = find real_theory "infix *"
 let ge_real : Term.lsymbol = find real_theory "infix >="
 
 (* map.Map theory *)
-let map_theory : Theory.theory = Env.read_theory env ["map"] "Map"
+let map_theory : Theory.theory = Env.find_theory env ["map"] "Map"
 let map_ts : Ty.tysymbol = find_type map_theory "map"
 (* let map_type (t:Ty.ty) : Ty.ty = Ty.ty_app map_ts [t] *)
 let map_get : Term.lsymbol = find map_theory "get"
@@ -105,8 +106,108 @@ let map_get : Term.lsymbol = find map_theory "get"
 
 let () = Self.result "Loading Why3 modules..."
 
+let find_ps mo s =
+  try
+    Mlw_module.ns_find_ps mo.Mlw_module.mod_export [s]
+  with e ->
+    Self.fatal "Exception raised while loading Why3 program symbol %s:@ %a"
+      s Exn_printer.exn_printer e
 
-let t_app ls args =
+let find_ls mo s = find mo.Mlw_module.mod_theory s
+
+(* ref.Ref module *)
+
+let ref_modules, ref_theories =
+  try
+    Env.read_lib_file (Mlw_main.library_of_env env) ["ref"]
+  with e ->
+    Self.fatal "Exception raised while loading ref module:@ %a"
+      Exn_printer.exn_printer e
+
+let ref_module : Mlw_module.modul = Stdlib.Mstr.find "Ref" ref_modules
+
+let ref_type : Mlw_ty.T.itysymbol =
+  Mlw_module.ns_find_its ref_module.Mlw_module.mod_export ["ref"]
+
+let ref_fun : Mlw_expr.psymbol = find_ps ref_module "ref"
+
+let get_logic_fun : Term.lsymbol = find_ls ref_module "prefix !"
+
+let get_fun : Mlw_expr.psymbol = find_ps ref_module "prefix !"
+
+let set_fun : Mlw_expr.psymbol = find_ps ref_module "infix :="
+
+(* mach_int.Int32 module *)
+
+let mach_int_modules, _mach_int_theories =
+  try
+    Env.read_lib_file (Mlw_main.library_of_env env) ["mach";"int"]
+  with e ->
+    Self.fatal "Exception raised while loading mach.int modules:@ %a"
+      Exn_printer.exn_printer e
+
+let int32_module : Mlw_module.modul =
+  try
+    Self.result "Looking up module mach.int.Int32";
+    Stdlib.Mstr.find "Int32" mach_int_modules
+  with Not_found ->
+    Self.fatal "Module mach.int.Int32 not found"
+
+let int32_type : Why3.Ty.tysymbol =
+  Mlw_module.ns_find_ts int32_module.Mlw_module.mod_export ["int32"]
+
+let int32_to_int : Term.lsymbol = find_ls int32_module "to_int"
+
+let add32_fun : Mlw_expr.psymbol = find_ps int32_module "infix +"
+
+let sub32_fun : Mlw_expr.psymbol = find_ps int32_module "infix -"
+
+let mul32_fun : Mlw_expr.psymbol = find_ps int32_module "infix *"
+
+let neg32_fun : Mlw_expr.psymbol = find_ps int32_module "prefix -"
+
+let eq32_fun : Mlw_expr.psymbol = find_ps int32_module "eq"
+
+let ne32_fun : Mlw_expr.psymbol = find_ps int32_module "ne"
+
+let le32_fun : Mlw_expr.psymbol = find_ps int32_module "infix <="
+
+let lt32_fun : Mlw_expr.psymbol = find_ps int32_module "infix <"
+
+let ge32_fun : Mlw_expr.psymbol = find_ps int32_module "infix >="
+
+let gt32_fun : Mlw_expr.psymbol = find_ps int32_module "infix >"
+
+let int32ofint_fun : Mlw_expr.psymbol = find_ps int32_module "of_int"
+
+(* mach_int.Int64 module *)
+
+let int64_module : Mlw_module.modul =
+  try
+    Self.result "Looking up module mach.int.Int64";
+    Stdlib.Mstr.find "Int64" mach_int_modules
+  with Not_found ->
+    Self.fatal "Module mach.int.Int64 not found"
+
+let int64_type : Why3.Ty.tysymbol =
+  Mlw_module.ns_find_ts int64_module.Mlw_module.mod_export ["int64"]
+
+let int64_to_int : Term.lsymbol = find_ls int64_module "to_int"
+
+let add64_fun : Mlw_expr.psymbol = find_ps int64_module "infix +"
+
+let sub64_fun : Mlw_expr.psymbol = find_ps int64_module "infix -"
+
+let mul64_fun : Mlw_expr.psymbol = find_ps int64_module "infix *"
+
+let le64_fun : Mlw_expr.psymbol = find_ps int64_module "infix <="
+
+let lt64_fun : Mlw_expr.psymbol = find_ps int64_module "infix <"
+
+let int64ofint_fun : Mlw_expr.psymbol = find_ps int64_module "of_int"
+
+
+let t_apply ls args =
   try
     Term.t_app_infer ls args
   with
@@ -143,16 +244,16 @@ let get_logic_var_value (t_host,t_offset) =
 
 let convert_unary2why unop term =
 	match unop with
-	| Neg 	-> t_app minus_int [term]
+	| Neg 	-> t_apply minus_int [term]
 	| BNot 	-> raise (Invalid_argument "Unary operation with type: BNot not yet implemented")
 	| LNot	-> raise (Invalid_argument "Unary operation with type: LNot not yet implemented")
 
 let convert_binary2why binop t1 t2 =
 	match binop with 	
-	| PlusA			-> t_app add_int [t1;t2]
-	| MinusA  		-> t_app sub_int [t1;t2]
-	| Mult 			-> t_app mul_int [t1;t2]
-	| Div  			-> t_app div_int [t1;t2]
+	| PlusA			-> t_apply add_int [t1;t2]
+	| MinusA  		-> t_apply sub_int [t1;t2]
+	| Mult 			-> t_apply mul_int [t1;t2]
+	| Div  			-> t_apply div_int [t1;t2]
 	| Mod			-> raise (Invalid_argument "Binary operation with type: Mod not yet implemented")
 	| Shiftlt 		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
 	| Shiftrt		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
@@ -212,10 +313,10 @@ let rec convert_term2why term =
 
 let rec convert_rel2why rlt term1 term2 =
 	match rlt with 
-	| Rlt 	-> t_app lt_int [term1;term2]
-	| Rgt 	-> t_app gt_int [term1;term2]
-	| Rle 	-> t_app le_int [term1;term2]
-	| Rge 	-> t_app ge_int [term1;term2]
+	| Rlt 	-> t_apply lt_int [term1;term2]
+	| Rgt 	-> t_apply gt_int [term1;term2]
+	| Rle 	-> t_apply le_int [term1;term2]
+	| Rge 	-> t_apply ge_int [term1;term2]
 	| Req 	-> Term.t_equ  term1 term2
 	| Rneq 	-> Term.t_neq  term1 term2 
 
@@ -247,6 +348,13 @@ let rec convert_pred2why predicate =
 
 (* Converts the generated predicates to stmt language *)
 let gen_po predicate = {proof_obligation = convert_pred2why predicate;}
+
+
+let build_task why3term = 
+	let why3_task = None in
+	let why3_goal = Decl.create_prsymbol (Ident.id_fresh "goal1") in
+	let why3_task = Task.add_prop_decl why3_task Decl.Pgoal why3_goal why3term in
+	Self.result "task is: \n %a" Pretty.print_task why3_task
 
 (* Builds vcgen_result with simple type *)
 let build_vcgen_result_simple statement predicate  =
@@ -318,7 +426,8 @@ let print_vcgen_result l =
 	(
 	 fun (x) -> print_statement x.statement;
 	 			print_condtion x.predicate;
-	 			print_why3_term x.po.proof_obligation
+	 			print_why3_term x.po.proof_obligation;
+	 			(*build_task x.po.proof_obligation*)
 	) l
 	
 
