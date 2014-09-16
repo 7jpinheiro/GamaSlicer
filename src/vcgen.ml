@@ -31,9 +31,20 @@ and vcgen_type =
 | LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
 
 
+(* Gets option *)
+let get_opt = function
+  | Some x -> x
+  | None   -> raise (Invalid_argument "Empty Function behavior")
+
 (* Prints a predicate(condition in this case) *)
 let print_why3_term term =
 	Self.result "Why3 Formula: %a\n" Pretty.print_term term
+
+let print_why3_type ty = 
+	Self.result "Why3 Type: %a\n" Pretty.print_ty ty
+
+let print_why3_ls ls =
+	Self.result "Why3 Ls: %a\n" Pretty.print_ls ls
 
 (* Prints a predicate(condition in this case) *)
 let print_condtion cond =
@@ -398,12 +409,19 @@ let result_vsymbol =
   ref (Term.create_vsymbol (Ident.id_fresh "result") unit_type)
 
 
-let t_apply ls args =
+let t_app ls args =
   try
-    Term.t_app_infer ls args
+     Term.t_app_infer ls args 
   with
-      Not_found ->
-        Self.fatal "lsymbol %s not found" ls.Term.ls_name.Ident.id_string
+    | Not_found -> Self.fatal "lsymbol %s not found" ls.Term.ls_name.Ident.id_string
+    | Ty.TypeMismatch(ty1,ty2) -> Self.result" BEGIN ERROR REPORT\n ";
+    							  print_why3_type ty1;
+    							  print_why3_type ty2;
+    							  print_why3_ls ls;
+    							  List.map (fun x -> print_why3_term x ;  print_why3_type (get_opt x.t_ty)) args;
+    							  Self.fatal" END ERROR REPORT\n ";
+    							 
+    							  
 
 type label = Here | Old | At of string
 
@@ -423,8 +441,8 @@ let is_real_type t =
 let coerce_to_int ty t =
   match ty with
     | Linteger -> t
-    | Ctype(TInt(IInt,_attr)) -> t_apply int32_to_int [t]
-    | Ctype(TInt(ILong,_attr)) -> t_apply int64_to_int [t]
+    | Ctype(TInt(IInt,_attr)) -> t_app int32_to_int [t]
+    | Ctype(TInt(ILong,_attr)) -> t_app int64_to_int [t]
     | _ -> raise (Invalid_argument "coerce_to_int")
 
 
@@ -443,7 +461,7 @@ let convert_unary2why unop ~label t1 ty1 =
 	Self.result "Converting unary : ";
 	print_why3_term t1;
 	match unop with
-	| Neg 	-> t_apply minus_int [coerce_to_int ty1 t1]
+	| Neg 	-> t_app minus_int [t1]
 	| BNot 	-> raise (Invalid_argument "Unary operation with type: BNot not yet implemented")
 	| LNot	-> raise (Invalid_argument "Unary operation with type: LNot not yet implemented")
 
@@ -452,10 +470,10 @@ let convert_binary2why binop ~label t1 ty1 t2 ty2 =
 	print_why3_term t1;
 	print_why3_term t2;
 	match binop with 	
-	| PlusA			-> t_apply add_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| MinusA  		-> t_apply sub_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Mult 			-> t_apply mul_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Div  			-> t_apply div_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
+	| PlusA			-> t_app add_int [t1;t2]
+	| MinusA  		-> t_app sub_int [t1;t2]
+	| Mult 			-> t_app mul_int [t1;t2]
+	| Div  			-> t_app div_int [t1;t2]
 	| Mod			-> raise (Invalid_argument "Binary operation with type: Mod not yet implemented")
 	| Shiftlt 		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
 	| Shiftrt		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
@@ -484,19 +502,19 @@ let rec convert_term2why ~label term term_type =
 	| TUnOp (unop,tnp1) 		-> convert_unary2why unop ~label (convert_term2why ~label tnp1 tnp1.term_type) tnp1.term_type
 	| TBinOp (binop,tbp1,tbp2)	-> convert_binary2why binop ~label (convert_term2why ~label tbp1 tbp1.term_type) tbp1.term_type (convert_term2why ~label tbp2 tbp2.term_type) tbp2.term_type 
 	| TLogic_coerce (ty,terl) when is_int_type ty -> 
-								 let whyterm =  convert_term2why ~label terl terl.term_type in
+								 Self.result"Entrou em TLogic_coerce \n";
+								 let whyterm = convert_term2why ~label terl terl.term_type in
 								 begin
        								 match ty, terl.term_type with
       							    | Linteger, Ctype(TInt(IInt,_attr)) ->
-        							     t_apply int32_to_int [whyterm]
+        							     t_app int32_to_int [whyterm]
        							    | Linteger, Ctype(TInt(ILong,_attr)) ->
-      							         t_apply int64_to_int [whyterm]
+      							         t_app int64_to_int [whyterm]
      						        | _ ->
            								 raise (Invalid_argument "Logic term with type: TLogic_coerce without type int (1) not yet implemented")
       							end
     | TLogic_coerce (_,_)		-> raise (Invalid_argument "Logic term with type: TLogic_coerce without type int (2) not yet implemented")
-	| Tat (t, lab) ->
-     							 begin
+	| Tat (t, lab) ->			 begin
        								 match lab with
         						    | LogicLabel(None, "Here") -> convert_term2why ~label:Here t t.term_type
         							| LogicLabel(None, "Old") -> convert_term2why ~label:Old t t.term_type
@@ -547,7 +565,7 @@ and convert_var2why ~label (t_host,t_offset) =
               let (vs,is_mutable,_ty) = get_var v in
               match is_mutable with
               |true ->  Self.result "Entered true\n";
-              		t_apply get_logic_fun [Term.t_var vs]
+              		t_app get_logic_fun [Term.t_var vs]
               |false ->  Self.result "Entered false\n";
               			Term.t_var vs
         in
@@ -564,7 +582,7 @@ and convert_var2why ~label (t_host,t_offset) =
       Self.not_yet_implemented "tlval Result"
     | TMem({term_node = TBinOp((PlusPI|IndexPI),t,i)}), TNoOffset ->
       (* t[i] *)
-      t_apply map_get [(convert_term2why ~label t t.term_type);(convert_term2why ~label i i.term_type)]
+      t_app map_get [(convert_term2why ~label t t.term_type);(convert_term2why ~label i i.term_type)]
     | TMem({term_node = TBinOp(_,t,i)}), TNoOffset ->
       Self.not_yet_implemented "tlval Mem(TBinOp(_,%a,%a), TNoOffset)"
         Cil_printer.pp_term t Cil_printer.pp_term i
@@ -578,17 +596,60 @@ and convert_var2why ~label (t_host,t_offset) =
     | TMem _t, TIndex _ ->
       Self.not_yet_implemented "tlval Mem TNoOffset"
 
+
+let eq op ty1 t1 ty2 t2 =
+  match ty1,ty2 with
+    | ty1, ty2 when is_int_type ty1 && is_int_type ty2 ->
+      op (coerce_to_int ty1 t1) (coerce_to_int ty2 t2)
+    | Lreal, Lreal -> op t1 t2
+    | Ctype _,_ ->
+      Self.not_yet_implemented "eq Ctype"
+    | Ltype _, Ltype _ when ty1 = ty2 -> op t1 t2
+    | Lvar _,_ ->
+      Self.not_yet_implemented "eq Lvar"
+    | Larrow _,_ ->
+      Self.not_yet_implemented "eq Larrow"
+    | _,_ ->
+      Self.not_yet_implemented "eq"
+
+
+let compare op ty1 t1 ty2 t2 =
+  match ty1,ty2 with
+    | ty1,ty2 when is_int_type ty1 && is_int_type ty2 ->
+      t_app op [coerce_to_int ty1 t1;coerce_to_int ty2 t2]
+    | Lreal, Lreal -> assert false
+    | Ctype _,_ ->
+      Self.not_yet_implemented "compare Ctype"
+    | Ltype _, Ltype _ -> assert false
+    | Lvar _,_ ->
+      Self.not_yet_implemented "compare Lvar"
+    | Larrow _,_ ->
+      Self.not_yet_implemented "compare Larrow"
+    | _,_ ->
+      Self.not_yet_implemented "compare"
+
+
 let convert_rel2why ~label rlt t1 ty1 t2 ty2 =
 	Self.result "Converting relation : ";
 	print_why3_term t1;
 	print_why3_term t2;
-	match rlt with 
-	| Rlt 	-> t_apply lt_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Rgt 	-> t_apply gt_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Rle 	-> t_apply le_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Rge 	-> t_apply ge_int [(coerce_to_int ty1 t1); (coerce_to_int ty2 t2)]
-	| Req 	-> Term.t_equ  (coerce_to_int ty1 t1) (coerce_to_int ty2 t2)
-	| Rneq 	-> Term.t_neq  (coerce_to_int ty1 t1) (coerce_to_int ty2 t2)
+	 match rlt with
+    | Req -> eq Term.t_equ ty1 t1 ty2 t2
+    | Rneq -> eq Term.t_neq ty1 t1 ty2 t2
+    | Rge when is_int_type ty1 && is_int_type ty2 -> compare ge_int ty1 t1 ty2 t2
+    | Rle when is_int_type ty1 && is_int_type ty2 -> compare le_int ty1 t1 ty2 t2
+    | Rgt when is_int_type ty1 && is_int_type ty2 -> compare gt_int ty1 t1 ty2 t2
+    | Rlt when is_int_type ty1 && is_int_type ty2 -> compare lt_int ty1 t1 ty2 t2
+    | Rge when is_real_type ty1 && is_real_type ty2 -> t_app ge_real [t1;t2]
+    | Rge ->
+      Self.not_yet_implemented "rel Rge"
+    | Rle ->
+      Self.not_yet_implemented "rel Rle"
+    | Rgt ->
+      Self.not_yet_implemented "rel Rgt"
+    | Rlt ->
+      Self.not_yet_implemented "rel Rlt %a %a"
+        Cil_printer.pp_logic_type ty1 Cil_printer.pp_logic_type ty2
 
 let rec convert_pred2why ~label predicate =
 	Self.result "Converting predicate : ";
@@ -654,13 +715,6 @@ let build_vcgen_result_loop statement invariant vcgen_result_list   =
 		predicate = invariant;
 		stype = LoopS vcgen_result_list ; 
 	}
-
-(* Gets option *)
-let get_opt = function
-  | Some x -> x
-  | None   -> raise (Invalid_argument "Empty Function behavior")
-
-
 
 
 (* Gets a list of logic_vars acording to the type of parameter e and the function *)
