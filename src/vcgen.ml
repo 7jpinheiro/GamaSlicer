@@ -446,7 +446,7 @@ let result_vsymbol =
 
 let t_app ls args =
   try
-     Term.t_app_infer ls args 
+    Term.fs_app ls args Ty.ty_int
   with
     | Not_found -> Self.fatal "lsymbol %s not found" ls.Term.ls_name.Ident.id_string
     | Ty.TypeMismatch(ty1,ty2) -> Self.result" BEGIN ERROR REPORT\n ";
@@ -496,7 +496,7 @@ let convert_unary2why unop ~label t1 ty1 =
 	Self.result "Converting unary : ";
 	print_why3_term t1;
 	match unop with
-	| Neg 	-> t_app minus_int [t1]
+	| Neg 	-> Term.fs_app minus_int [t1] Ty.ty_int
 	| BNot 	-> raise (Invalid_argument "Unary operation with type: BNot not yet implemented")
 	| LNot	-> raise (Invalid_argument "Unary operation with type: LNot not yet implemented")
 
@@ -505,10 +505,10 @@ let convert_binary2why binop ~label t1 ty1 t2 ty2 =
 	print_why3_term t1;
 	print_why3_term t2;
 	match binop with 	
-	| PlusA			-> t_app add_int [t1;t2]
-	| MinusA  		-> t_app sub_int [t1;t2]
-	| Mult 			-> t_app mul_int [t1;t2]
-	| Div  			-> t_app div_int [t1;t2]
+	| PlusA			-> Term.fs_app add_int [t1;t2] Ty.ty_int
+	| MinusA  	-> Term.fs_app sub_int [t1;t2] Ty.ty_int
+	| Mult 			-> Term.fs_app mul_int [t1;t2] Ty.ty_int
+	| Div  			-> Term.fs_app div_int [t1;t2] Ty.ty_int
 	| Mod			-> raise (Invalid_argument "Binary operation with type: Mod not yet implemented")
 	| Shiftlt 		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
 	| Shiftrt		-> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
@@ -651,7 +651,7 @@ let eq op ty1 t1 ty2 t2 =
 let compare op ty1 t1 ty2 t2 =
   match ty1,ty2 with
     | ty1,ty2 when is_int_type ty1 && is_int_type ty2 ->
-      t_app op [coerce_to_int ty1 t1;coerce_to_int ty2 t2]
+      Term.ps_app op [coerce_to_int ty1 t1;coerce_to_int ty2 t2]
     | Lreal, Lreal -> assert false
     | Ctype _,_ ->
       Self.not_yet_implemented "compare Ctype"
