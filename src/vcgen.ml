@@ -46,9 +46,15 @@ let print_why3_type ty =
 let print_why3_ls ls =
 	Self.result "Why3 Ls: %a\n" Pretty.print_ls ls
 
+
+let print_why3_typenode tn =
+  match tn with
+  | Ty.Tyvar tvsymbol -> Self.result"Why3 Tyvar %a\n" Pretty.print_tv tvsymbol
+  | Ty.Tyapp (tysymbol2,ty_list) -> Self.result"Why3 Tyapp %a\n" Pretty.print_ts tysymbol2
+
 (* Prints a predicate(condition in this case) *)
-let print_condtion cond =
-	Self.result "Post_condition: %a\n" pp_predicate_named cond
+let print_predicate cond =
+	Self.result "Predicate: %a\n" pp_predicate_named cond
 
 (* Prints a statement *)
 let print_statement stmt =
@@ -74,7 +80,7 @@ let print_ss_postcondtion l =
 	List.iter
 	(
 	 fun (x,y) -> print_statements x;
-	 			  print_condtion y  
+	 			  print_predicate y  
 	) l
 
 (* Prints a list of triples(at the moment pos are not printed) *)
@@ -82,7 +88,7 @@ let print_vcgen_result l =
 	List.iter
 	(
 	 fun (x) -> print_statement x.statement;
-	 			print_condtion x.predicate;
+	 			print_predicate x.predicate;
 	 			print_why3_term x.po.proof_obligation;
 	 			(*build_task x.po.proof_obligation*)
 	) l
@@ -97,13 +103,8 @@ let provers = Whyconf.get_provers config
 let main = Whyconf.get_main config
 let env = Env.create_env (Whyconf.loadpath main)
 
-let int_theory = Env.read_theory env ["int"] "Int"
+let int_theory = Env.read_theory  env ["int"] "Int"
 let computer_division_theory = Env.read_theory env ["int"] "ComputerDivision"
-let fact_theory = Env.read_theory env ["int"] "Fact"
-let map_theory = Env.read_theory env ["map"] "Map"
-let map_symbol = Theory.ns_find_ts map_theory.Theory.th_export ["map"]
-let map_theory = Ty.ty_app map_symbol [Ty.ty_int; Ty.ty_int]
-
 
 let const2why lc = 
   match lc with
@@ -122,8 +123,6 @@ let var2why (t_host,t_offset) =
                  Term.t_var vsimbol  
   | TResult _ -> raise (Invalid_argument "Logic var host with type: LResult not yet implemented")
   | TMem  _   -> raise (Invalid_argument "Logic var host with type: TMem not yet implemented")
-
-
 
 let rec term2why term = 
   match term.term_node with
@@ -240,13 +239,25 @@ let rec pred2why predicate =
   | Pfresh _               -> raise (Invalid_argument "Logic predicate with type: Pfresh not yet implemented")
   | Psubtype _             -> raise (Invalid_argument "Logic predicate with type: Psubtype not yet implemented")
 
-(* Converts the generated predicates to stmt language *)
+(* Converts the generated predicates to why3 language *)
 let gen_po predicate = {
   proof_obligation = 
-    
+    try
+      Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
       pred2why predicate
-  
-
+    with
+    | Not_found -> Self.fatal "lsymbol not found"
+    | Ty.TypeMismatch(ty1,ty2) -> 
+                    Self.result" BEGIN ERROR REPORT\n ";
+                    print_why3_type ty1;
+                    print_why3_type ty2;
+                    let equal = Ty.ty_equal ty1 ty2 in
+                    let t1node = ty1.ty_node in
+                    let t2node = ty2.ty_node in
+                    print_why3_typenode t1node;
+                    print_why3_typenode t2node;
+                    Self.result"Ty1 == ty2: %b\n" equal; 
+                    Self.fatal" END ERROR REPORT\n ";
 }
 
 
