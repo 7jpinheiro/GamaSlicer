@@ -493,17 +493,12 @@ let get_logic_constant_value ~label lc =
 
 
 let convert_unary2why unop ~label t1 ty1 =
-	Self.result "Converting unary : ";
-	print_why3_term t1;
 	match unop with
 	| Neg 	-> Term.fs_app minus_int [t1] Ty.ty_int
 	| BNot 	-> raise (Invalid_argument "Unary operation with type: BNot not yet implemented")
 	| LNot	-> raise (Invalid_argument "Unary operation with type: LNot not yet implemented")
 
 let convert_binary2why binop ~label t1 ty1 t2 ty2 =
-	Self.result "Converting binary : ";
-	print_why3_term t1;
-	print_why3_term t2;
 	match binop with 	
 	| PlusA			-> Term.fs_app add_int [t1;t2] Ty.ty_int
 	| MinusA  	-> Term.fs_app sub_int [t1;t2] Ty.ty_int
@@ -529,16 +524,13 @@ let convert_binary2why binop ~label t1 ty1 t2 ty2 =
 	| MinusPP		-> raise (Invalid_argument "Binary operation with type: MinusPP not yet implemented")
 
 let rec convert_term2why ~label term term_type = 
-	Self.result "Converting a term : ";
-	print_term term;
 	match term.term_node with
 	| TConst lc 				-> Term.t_const (get_logic_constant_value ~label lc)
 	| TLval tvar 				-> convert_var2why ~label tvar
 	| TUnOp (unop,tnp1) 		-> convert_unary2why unop ~label (convert_term2why ~label tnp1 tnp1.term_type) tnp1.term_type
 	| TBinOp (binop,tbp1,tbp2)	-> convert_binary2why binop ~label (convert_term2why ~label tbp1 tbp1.term_type) tbp1.term_type (convert_term2why ~label tbp2 tbp2.term_type) tbp2.term_type 
 	| TLogic_coerce (ty,terl) when is_int_type ty -> 
-								 Self.result"Entrou em TLogic_coerce \n";
-								 let whyterm = convert_term2why ~label terl terl.term_type in
+								(**  let whyterm = *) convert_term2why ~label terl terl.term_type (*in
 								 begin
        								 match ty, terl.term_type with
       							    | Linteger, Ctype(TInt(IInt,_attr)) ->
@@ -547,7 +539,7 @@ let rec convert_term2why ~label term term_type =
       							         t_app int64_to_int [whyterm]
      						        | _ ->
            								 raise (Invalid_argument "Logic term with type: TLogic_coerce without type int (1) not yet implemented")
-      							end
+      							end*)
     | TLogic_coerce (_,_)		-> raise (Invalid_argument "Logic term with type: TLogic_coerce without type int (2) not yet implemented")
 	| Tat (t, lab) ->			 begin
        								 match lab with
@@ -588,7 +580,6 @@ let rec convert_term2why ~label term term_type =
 	| Tlet _ 					-> raise (Invalid_argument "Logic term with type: Tlet not yet implemented")
 
 and convert_var2why ~label (t_host,t_offset) =
-	Self.result "Entered convert_var2why \n";
 	 match t_host,t_offset with
     | TResult _, TNoOffset -> Term.t_var !result_vsymbol
     | TVar lv, TNoOffset ->
@@ -596,17 +587,17 @@ and convert_var2why ~label (t_host,t_offset) =
         let t =
           match lv.lv_origin with
             | None -> Term.t_var (get_lvar lv)
-            | Some v -> Self.result "Entered Some\n";
+            | Some v -> 
               let (vs,is_mutable,_ty) = get_var v in
               match is_mutable with
-              |true ->  Self.result "Entered true\n";
+              |true -> 
               		t_app get_logic_fun [Term.t_var vs]
-              |false ->  Self.result "Entered false\n";
+              |false -> 
               			Term.t_var vs
         in
         match label with
-          | Here -> Self.result "Entered Here\n"; t
-          | Old -> Self.result "Entered Old\n"; print_why3_term (Mlw_wp.t_at_old t); Mlw_wp.t_at_old t
+          | Here -> t
+          | Old -> Mlw_wp.t_at_old t
           | At _lab ->
             (* t_app Mlw_wp.fs_at [t; ??? lab] *)
       Self.not_yet_implemented "tlval TVar/At"
@@ -665,9 +656,6 @@ let compare op ty1 t1 ty2 t2 =
 
 
 let convert_rel2why ~label rlt t1 ty1 t2 ty2 =
-	Self.result "Converting relation : ";
-	print_why3_term t1;
-	print_why3_term t2;
 	 match rlt with
     | Req -> eq Term.t_equ ty1 t1 ty2 t2
     | Rneq -> eq Term.t_neq ty1 t1 ty2 t2
@@ -687,8 +675,6 @@ let convert_rel2why ~label rlt t1 ty1 t2 ty2 =
         Cil_printer.pp_logic_type ty1 Cil_printer.pp_logic_type ty2
 
 let rec convert_pred2why ~label predicate =
-	Self.result "Converting predicate : ";
-	print_condtion predicate;
 	match predicate.content with
 	| Pfalse					-> Term.t_false
 	| Ptrue 					-> Term.t_true
