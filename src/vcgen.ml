@@ -2,6 +2,7 @@ open Cil_types
 open Plugin
 open Printer
 open Why3
+open Why3.Call_provers
 
 module Self = 
   Register
@@ -94,6 +95,17 @@ let print_vcgen_result l =
 	) l
 	
 
+  let parseProverAnswer = function
+  | Valid -> "Valid"
+  | Invalid -> "Invalid"
+  | Timeout -> "Timeout"
+  | OutOfMemory -> "Ouf Of Memory"
+  | Unknown "" -> "Unknown"
+  | Failure "" -> "Failure"
+  | Unknown s -> Format.sprintf "Unknown (%s)" s
+  | Failure s -> Format.sprintf "Failure (%s)" s
+  | HighFailure -> "HighFailure"
+
 (***************)
 (* environment *)
 (***************)
@@ -106,6 +118,42 @@ let env = Env.create_env (Whyconf.loadpath main)
 let int_theory = Env.read_theory  env ["int"] "Int"
 let computer_division_theory = Env.read_theory env ["int"] "ComputerDivision"
 let ref_module = Mlw_module.read_module env ["ref"] "Ref"
+
+
+let alt_ergo : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "Alt-Ergo";
+                  prover_version = "0.95.2";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover alt-ergo not installed or not configured@.";
+    exit 0
+
+let alt_ergo_driver : Driver.driver =
+  try
+    Driver.load_driver env alt_ergo.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for alt-ergo: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+let rec proveAltErgo = function
+  | [] -> []
+  | h :: t ->
+     begin
+       let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal h.po.proof_obligation in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:alt_ergo.Whyconf.command alt_ergo_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+       (answer,(result.pr_time)) :: (proveAltErgo t)    
+     end
 
 
 let bound_vars = Hashtbl.create 257
@@ -135,6 +183,29 @@ let get_var v =
     Hashtbl.find program_vars v.vid
   with Not_found ->
     Self.fatal "program variable %s (%d) not found" v.vname v.vid
+
+
+let rec getToBound toBound = function
+  | ter ->
+     begin 
+       match ter.Term.t_node with
+       | Term.Tconst(n) -> toBound
+       | Term.Tnot(t) -> getToBound toBound t
+       | Term.Tvar (vs) ->
+    begin
+      if List.mem vs toBound then toBound
+      else vs :: toBound
+    end
+       | Term.Tapp(s,ts) -> List.concat (List.map (getToBound toBound) ts)
+       | Term.Tbinop(binop,t1,t2) -> (getToBound toBound t1) @ (getToBound toBound t2)
+       | Term.Tquant(ts,tqua) ->
+    begin
+      let triple = Term.t_open_quant tqua in
+      let _,_,t = triple in
+      getToBound toBound t
+    end
+       | _ -> toBound
+     end
 
 let const2why lc = 
   match lc with
@@ -288,7 +359,10 @@ let gen_po predicate = {
   proof_obligation = 
     try
       Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
-      pred2why predicate
+      let why3form = pred2why predicate in
+      let varToBound = getToBound [] why3form in
+      let newFormula = Term.t_forall_close varToBound [] why3form in
+      newFormula
     with
     | Not_found -> Self.fatal "lsymbol not found"
     | Ty.TypeMismatch(ty1,ty2) -> 
@@ -303,13 +377,7 @@ let gen_po predicate = {
                     Self.result"Ty1 == ty2: %b\n" equal; 
                     Self.fatal" END ERROR REPORT\n ";
 }
-
-
-let build_task why3term = 
-	let why3_task = None in
-	let why3_goal = Decl.create_prsymbol (Ident.id_fresh "goal1") in
-	let why3_task = Task.add_prop_decl why3_task Decl.Pgoal why3_goal why3term in
-	Self.result "task is: \n %a" Pretty.print_task why3_task
+  
 
 (* Builds vcgen_result with simple type *)
 let build_vcgen_result_simple statement predicate  =
@@ -541,7 +609,7 @@ let get_Condtion  funspec func_buildcondition =
 let apply_if_defition def kf =
 	match def with
 	|true ->
-		let fundec = Kernel_function.get_definition kf in
+	     	let fundec = Kernel_function.get_definition kf in
       	let funspec = Annotations.funspec kf in 
       	let list_behaviors = Annotations.behaviors kf in 
         let formals =  List.map (fun v -> create_var v false) (Kernel_function.get_formals kf) in
@@ -570,6 +638,8 @@ let visitFunctions () =
      Cfg.clearFileCFG c_file;
      computeCfg ();
      let list_stm_and_post = visitFunctions () in
-     print_vcgen_result list_stm_and_post
+     let results = proveAltErgo list_stm_and_post in 
+     print_vcgen_result list_stm_and_post;
+     List.iter (fun x -> (Self.result"%s in %f\n" (fst x) (snd x) )) results
      
 let () = Db.Main.extend run 
