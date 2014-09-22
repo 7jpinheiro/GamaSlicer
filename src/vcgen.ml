@@ -105,6 +105,36 @@ let env = Env.create_env (Whyconf.loadpath main)
 
 let int_theory = Env.read_theory  env ["int"] "Int"
 let computer_division_theory = Env.read_theory env ["int"] "ComputerDivision"
+let ref_module = Mlw_module.read_module env ["ref"] "Ref"
+
+
+let bound_vars = Hashtbl.create 257
+
+let create_lvar v =
+  let id = Ident.id_fresh v.lv_name in
+  let vs = Term.create_vsymbol id Ty.ty_int in
+  Hashtbl.add bound_vars v.lv_id vs;
+  vs
+
+let get_lvar lv =
+  try
+    Hashtbl.find bound_vars lv.lv_id
+  with Not_found ->
+    Self.fatal "logic variable %s (%d) not found" lv.lv_name lv.lv_id
+
+let program_vars = Hashtbl.create 257
+
+let create_var v is_mutable =
+  let vs = Term.create_vsymbol (Ident.id_fresh v.vname) Ty.ty_int in 
+  Self.result "create program variable %s (%d)" v.vname v.vid;
+  Hashtbl.add program_vars v.vid (vs,is_mutable,Ty.ty_int );
+  vs
+
+let get_var v =
+  try
+    Hashtbl.find program_vars v.vid
+  with Not_found ->
+    Self.fatal "program variable %s (%d) not found" v.vname v.vid
 
 let const2why lc = 
   match lc with
@@ -119,8 +149,22 @@ let const2why lc =
 
 let var2why (t_host,t_offset) =
   match t_host with
-  | TVar lc   -> let vsimbol = Term.create_vsymbol (Ident.id_fresh lc.lv_name ) Ty.ty_int  in
-                 Term.t_var vsimbol  
+  | TVar lc   -> 
+      begin    
+        let tvar =
+          match lc.lv_origin with
+            | None -> Term.t_var (get_lvar lc)
+            | Some v -> 
+              let (vs,is_mutable,_ty) = get_var v in
+              match is_mutable with
+              |true -> 
+                      let get_logic_fun = Theory.ns_find_ls ref_module.Mlw_module.mod_theory.Theory.th_export ["prefix !"] in
+                      Term.t_app_infer get_logic_fun [Term.t_var vs]
+              |false -> 
+                      Term.t_var vs
+        in
+        tvar
+        end
   | TResult _ -> raise (Invalid_argument "Logic var host with type: LResult not yet implemented")
   | TMem  _   -> raise (Invalid_argument "Logic var host with type: TMem not yet implemented")
 
@@ -500,6 +544,8 @@ let apply_if_defition def kf =
 		let fundec = Kernel_function.get_definition kf in
       	let funspec = Annotations.funspec kf in 
       	let list_behaviors = Annotations.behaviors kf in 
+        let formals =  List.map (fun v -> create_var v false) (Kernel_function.get_formals kf) in
+        let locals = List.map (fun v -> create_var v true) (Kernel_function.get_locals kf) in
         let post_condt = get_Condtion funspec  Ast_info.behavior_postcondition  in
         let list_statements = get_list_of_statements fundec in
         let spo_list = vcgen list_statements post_condt in
