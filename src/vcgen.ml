@@ -17,7 +17,8 @@ type po =
 { 
  proof_obligation : Term.term;				
 }(* Datatype that stores the vcgen_result  *)
-and vcgen_result = 
+
+type vcgen_result = 
 {
 	mutable statement : stmt ;										(* Statement that originated the result *)
 	mutable po : po ;												(* Stores stmt proof obligation  *)
@@ -32,10 +33,42 @@ and vcgen_type =
 | LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
 
 
+type assert_slicing_type =
+| Post_slicing (* Postcondition-based Slicing *)
+| Prec_slicing (* Precondition-based Slicing *)
+| Spec_slicing (* Specification-based Slicing *)
+
+type prover_result =
+{
+  mutable name : string;
+  mutable version : string;
+  mutable result : string;
+  mutable time : float;
+}
+
+type slicing_result =
+{
+  mutable statement : stmt ;                    (* The statement  *)
+  mutable formula : Term.term;                  (* The statement is LoopS, if contains a Loop with one block *)
+  mutable prover_result: prover_result list ;                         (* The statement is LoopS, if contains a Loop with one block *)
+  mutable slicing_type: assert_slicing_type;    (* The statement is LoopS, if contains a Loop with one block *)
+}
+
+
+ 
+type sup_provers =
+| Alt_ergo
+| Z3
+
+
+
 (* Gets option *)
 let get_opt = function
   | Some x -> x
   | None   -> raise (Invalid_argument "Empty Function behavior")
+
+
+
 
 (* Prints a predicate(condition in this case) *)
 let print_why3_term term =
@@ -84,16 +117,27 @@ let print_ss_postcondtion l =
 	 			  print_predicate y  
 	) l
 
-(* Prints a list of triples(at the moment pos are not printed) *)
-let print_vcgen_result l =
-	List.iter
-	(
-	 fun (x) -> print_statement x.statement;
-	 			print_predicate x.predicate;
-	 			print_why3_term x.po.proof_obligation;
-	 			(*build_task x.po.proof_obligation*)
-	) l
+let print_prover_result prover_result = 
+  Self.result "Validity: %s\n " prover_result.result;
+  Self.result "Time: %f\n " prover_result.time;
+  Self.result "Prover: %s\n " prover_result.name
 	
+let print_slice_result result =
+  print_statement result.statement;
+  print_why3_term result.formula;
+  List.iter
+  (
+   fun x -> print_prover_result x
+  ) result.prover_result
+
+
+let print_slice_results results =
+   List.iter
+  (
+   fun x -> Self.result "--------------------------\n\n";
+            print_slice_result x;
+            Self.result "--------------------------\n\n"
+  ) results
 
   let parseProverAnswer = function
   | Valid -> "Valid"
@@ -130,6 +174,16 @@ let alt_ergo : Whyconf.config_prover =
     Format.eprintf "Prover alt-ergo not installed or not configured@.";
     exit 0
 
+let z3 : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "Z3";
+                  prover_version = "4.3.1";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover Z3 not installed or not configured@.";
+    exit 0    
+
 let alt_ergo_driver : Driver.driver =
   try
     Driver.load_driver env alt_ergo.Whyconf.driver []
@@ -138,21 +192,42 @@ let alt_ergo_driver : Driver.driver =
       Exn_printer.exn_printer e;
     exit 1
 
-let rec proveAltErgo = function
-  | [] -> []
-  | h :: t ->
-     begin
+  let z3_driver : Driver.driver =
+  try
+    Driver.load_driver env z3.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for Z3: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+let proveAltErgo term = 
        let task = None in
        let task = Task.use_export task int_theory in
        let task = Task.use_export task computer_division_theory in
        let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
-       let task = Task.add_prop_decl task Decl.Pgoal goal h.po.proof_obligation in
+       let task = Task.add_prop_decl task Decl.Pgoal goal term in
 
        let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:alt_ergo.Whyconf.command alt_ergo_driver task ()) () in
 
        let answer = parseProverAnswer (result.pr_answer) in
        
-       (answer,(result.pr_time)) :: (proveAltErgo t)    
+       (answer,result.pr_time) 
+
+let rec proveZ3 = function
+  | [] -> []
+  | h :: t ->
+     begin
+   let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal h.po.proof_obligation in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:z3.Whyconf.command ~timelimit:10 z3_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+        (answer,(result.pr_time)) :: (proveZ3 t)    
      end
 
 
@@ -175,12 +250,12 @@ let program_vars = Hashtbl.create 257
 let create_var v is_mutable =
   let vs = Term.create_vsymbol (Ident.id_fresh v.vname) Ty.ty_int in 
   Self.result "create program variable %s (%d)" v.vname v.vid;
-  Hashtbl.add program_vars v.vid (vs,is_mutable,Ty.ty_int );
+  Hashtbl.add program_vars v.vname (vs,is_mutable,Ty.ty_int );
   vs
 
 let get_var v =
   try
-    Hashtbl.find program_vars v.vid
+    Hashtbl.find program_vars v.vname
   with Not_found ->
     Self.fatal "program variable %s (%d) not found" v.vname v.vid
 
@@ -206,6 +281,11 @@ let rec getToBound toBound = function
     end
        | _ -> toBound
      end
+
+let bound_vars term =
+   let varToBound = getToBound [] term in
+   let newFormula = Term.t_forall_close varToBound [] term in
+   newFormula
 
 let const2why lc = 
   match lc with
@@ -359,10 +439,7 @@ let gen_po predicate = {
   proof_obligation = 
     try
       Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
-      let why3form = pred2why predicate in
-      let varToBound = getToBound [] why3form in
-      let newFormula = Term.t_forall_close varToBound [] why3form in
-      newFormula
+      pred2why predicate 
     with
     | Not_found -> Self.fatal "lsymbol not found"
     | Ty.TypeMismatch(ty1,ty2) -> 
@@ -406,6 +483,62 @@ let build_vcgen_result_loop statement invariant vcgen_result_list   =
 		stype = LoopS vcgen_result_list ; 
 	}
 
+let get_po vcgen_result = 
+    vcgen_result.po.proof_obligation
+
+
+let build_prover_result result time name version =
+  {
+   name = name;
+   version = version;
+   result = result; 
+   time = time;
+  }
+
+let build_slicing_result statement form prover_result slicing_type = 
+  {
+   statement = statement;
+   formula = form;
+   slicing_type = slicing_type;
+   prover_result = prover_result;
+  }
+
+let send_to_prover form prover  =
+  match prover with 
+  | Alt_ergo ->
+            let result = proveAltErgo form in
+            let name = alt_ergo.prover.prover_name in
+            let version = alt_ergo.prover.prover_version in 
+            build_prover_result (fst result) (snd result) name  version
+  | Z3 -> raise (Invalid_argument "Z3 prover not implemented")
+
+let build_imp elem1 elem2 = 
+  let po1 = get_po elem1 in
+  let po2 = get_po elem2 in
+  let form = Term.t_implies po1 po2 in
+  let b_form = bound_vars form in
+  b_form
+  
+
+let rec post_slicing elem vcgen_results provers_list =
+  match vcgen_results with
+  | [] -> []
+  | h :: t -> 
+        let formula = build_imp elem h in
+        let prl = List.map (fun prov -> send_to_prover formula prov) provers_list in 
+        (build_slicing_result h.statement formula prl Post_slicing) :: (post_slicing elem t provers_list)
+
+
+let rec apply_and_remove slicing_type vcgen_results elem provers_list  =
+  match vcgen_results with
+  | [] -> []
+  | h :: t -> (post_slicing elem vcgen_results provers_list) @ (apply_and_remove slicing_type t h provers_list)
+
+let slicing slice_type vcgen_results provers_list = 
+  match slice_type with
+  | Post_slicing -> apply_and_remove Post_slicing (List.tl vcgen_results) (List.hd vcgen_results) provers_list 
+  | Prec_slicing -> raise (Invalid_argument "Precondition-based slicing not yet implemented")
+  | Spec_slicing -> raise (Invalid_argument "Specification-based slicing not yet implemented")
 
 (* Gets a list of logic_vars acording to the type of parameter e and the function *)
 let get_logic_vars e func = 
@@ -617,29 +750,31 @@ let apply_if_defition def kf =
         let post_condt = get_Condtion funspec  Ast_info.behavior_postcondition  in
         let list_statements = get_list_of_statements fundec in
         let spo_list = vcgen list_statements post_condt in
-        spo_list	
+        List.rev spo_list	
 	|false -> []
 
 (* Visits functions *)
-let visitFunctions () =
+let calculus () =
 	Self.result "Visting functions.\n";
 	Globals.Functions.fold
 	(
       fun kf acc -> (apply_if_defition (Kernel_function.is_definition kf) kf) @ acc
 	) []
 
+
+
   (* Main function *)
   let run () =
 
      Ast.compute (); 
      if (Ast.is_computed()) then Self.result "AST computed.\n"; 	
-
      let c_file = Ast.get () in
      Cfg.clearFileCFG c_file;
      computeCfg ();
-     let list_stm_and_post = visitFunctions () in
-     let results = proveAltErgo list_stm_and_post in 
-     print_vcgen_result list_stm_and_post;
-     List.iter (fun x -> (Self.result"%s in %f\n" (fst x) (snd x) )) results
+     let vcgen_results = calculus () in
+     let slicing_results = slicing Post_slicing vcgen_results [Alt_ergo] in
+     print_slice_results slicing_results
+
+
      
 let () = Db.Main.extend run 
