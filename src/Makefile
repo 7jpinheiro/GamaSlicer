@@ -2,7 +2,7 @@ FRAMAC_SHARE  = /usr/local/share/frama-c
 FRAMAC_LIBDIR = $(shell frama-c -print-lib-path)
 
 PLUGIN_NAME     := GamaSlicer
-PLUGIN_CMO      := vcgen
+PLUGIN_CMO      :=  towhy3 vcgen provers slicing gs_printer register
 
 VERBOSEMAKE=yes
 
