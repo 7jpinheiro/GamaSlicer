@@ -48,7 +48,7 @@ type prover_result =
 
 type slicing_result =
 {
-  mutable statement : stmt ;                    (* The statement  *)
+  mutable slice_statement : stmt ;                    (* The statement  *)
   mutable formula : Term.term;                  (* The statement is LoopS, if contains a Loop with one block *)
   mutable prover_result: prover_result list ;                         (* The statement is LoopS, if contains a Loop with one block *)
   mutable slicing_type: assert_slicing_type;    (* The statement is LoopS, if contains a Loop with one block *)
@@ -59,6 +59,10 @@ type slicing_result =
 type sup_provers =
 | Alt_ergo
 | Z3
+| CVC3
+| CVC4
+| Yices
+| EProver
 
 
 
@@ -92,7 +96,8 @@ let print_predicate cond =
 
 (* Prints a statement *)
 let print_statement stmt =
-	Self.result "Statement: %a\n" pp_stmt stmt
+	Self.result "Statement: %a" pp_stmt stmt;
+  Self.result "S_id: %d\n" stmt.sid
 
 (* Prints a term *)
 let print_term term =
@@ -117,17 +122,19 @@ let print_ss_postcondtion l =
 	 			  print_predicate y  
 	) l
 
-let print_prover_result prover_result = 
+let print_prover_result prover_result =
+  Self.result "Prover: %s\n " prover_result.name;
   Self.result "Validity: %s\n " prover_result.result;
-  Self.result "Time: %f\n " prover_result.time;
-  Self.result "Prover: %s\n " prover_result.name
+  Self.result "Time: %f\n " prover_result.time
+  
 	
 let print_slice_result result =
-  print_statement result.statement;
+  print_statement result.slice_statement;
   print_why3_term result.formula;
   List.iter
   (
-   fun x -> print_prover_result x
+   fun x -> Self.result "****************** \n\n";           
+            print_prover_result x
   ) result.prover_result
 
 
@@ -184,6 +191,47 @@ let z3 : Whyconf.config_prover =
     Format.eprintf "Prover Z3 not installed or not configured@.";
     exit 0    
 
+
+let cvc4 : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "CVC4";
+                  prover_version = "1.4";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover cvc4 not installed or not configured@.";
+    exit 0
+
+let cvc3 : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "CVC3";
+                  prover_version = "2.4.1";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover cvc3 not installed or not configured@.";
+    exit 0
+
+let yices : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "Yices";
+                  prover_version = "2.2.2";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover yices not installed or not configured@.";
+    exit 0
+
+let e_prover : Whyconf.config_prover =
+  try
+    let prover = {Whyconf.prover_name = "Eprover";
+                  prover_version = "1.8-001";
+                  prover_altern = ""} in
+    Whyconf.Mprover.find prover provers
+  with Not_found ->
+    Format.eprintf "Prover E-prover not installed or not configured@.";
+    exit 0
+
 let alt_ergo_driver : Driver.driver =
   try
     Driver.load_driver env alt_ergo.Whyconf.driver []
@@ -197,6 +245,39 @@ let alt_ergo_driver : Driver.driver =
     Driver.load_driver env z3.Whyconf.driver []
   with e ->
     Format.eprintf "Failed to load driver for Z3: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+
+let cvc4_driver : Driver.driver =
+  try
+    Driver.load_driver env cvc4.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for cvc4: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+let cvc3_driver : Driver.driver =
+  try
+    Driver.load_driver env cvc3.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for cvc3: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+let yices_driver : Driver.driver =
+  try
+    Driver.load_driver env yices.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for yices: %a@."
+      Exn_printer.exn_printer e;
+    exit 1
+
+let e_prover_driver : Driver.driver =
+  try
+    Driver.load_driver env e_prover.Whyconf.driver []
+  with e ->
+    Format.eprintf "Failed to load driver for e_prover: %a@."
       Exn_printer.exn_printer e;
     exit 1
 
@@ -230,6 +311,60 @@ let rec proveZ3 = function
         (answer,(result.pr_time)) :: (proveZ3 t)    
      end
 
+
+let proveCVC4 term =
+       let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal term in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:cvc4.Whyconf.command cvc4_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+      (answer,result.pr_time) 
+
+
+let proveCVC3 term =
+       let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal term in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:cvc3.Whyconf.command cvc3_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+      (answer,result.pr_time)
+
+let proveYices term = 
+       let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal term in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:yices.Whyconf.command yices_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+       (answer,result.pr_time)
+
+
+let proveEProver term = 
+       let task = None in
+       let task = Task.use_export task int_theory in
+       let task = Task.use_export task computer_division_theory in
+       let goal = Decl.create_prsymbol (Ident.id_fresh "goal") in
+       let task = Task.add_prop_decl task Decl.Pgoal goal term in
+
+       let result : Call_provers.prover_result = Call_provers.wait_on_call (Driver.prove_task ~command:e_prover.Whyconf.command e_prover_driver task ()) () in
+
+       let answer = parseProverAnswer (result.pr_answer) in
+       
+       (answer,result.pr_time) 
 
 let bound_vars = Hashtbl.create 257
 
@@ -487,6 +622,12 @@ let get_po vcgen_result =
     vcgen_result.po.proof_obligation
 
 
+let isReturnStmt stmtkind =
+  match stmtkind with
+  | Return (_,_) -> true
+  | _ -> false
+
+
 let build_prover_result result time name version =
   {
    name = name;
@@ -497,7 +638,7 @@ let build_prover_result result time name version =
 
 let build_slicing_result statement form prover_result slicing_type = 
   {
-   statement = statement;
+   slice_statement = statement;
    formula = form;
    slicing_type = slicing_type;
    prover_result = prover_result;
@@ -510,6 +651,26 @@ let send_to_prover form prover  =
             let name = alt_ergo.prover.prover_name in
             let version = alt_ergo.prover.prover_version in 
             build_prover_result (fst result) (snd result) name  version
+  | CVC3 -> 
+            let result = proveAltErgo form in
+            let name = cvc3.prover.prover_name in
+            let version = cvc3.prover.prover_version in 
+            build_prover_result (fst result) (snd result) name  version
+  | CVC4 -> 
+            let result = proveAltErgo form in
+            let name = cvc4.prover.prover_name in
+            let version = cvc4.prover.prover_version in 
+            build_prover_result (fst result) (snd result) name  version
+  | Yices -> 
+            let result = proveYices form in
+            let name = yices.prover.prover_name in
+            let version = yices.prover.prover_version in 
+            build_prover_result (fst result) (snd result) name  version
+  | EProver -> 
+            let result = proveEProver form in
+            let name = e_prover.prover.prover_name in
+            let version = e_prover.prover.prover_version in 
+            build_prover_result (fst result) (snd result) name  version                   
   | Z3 -> raise (Invalid_argument "Z3 prover not implemented")
 
 let build_imp elem1 elem2 = 
@@ -529,14 +690,14 @@ let rec post_slicing elem vcgen_results provers_list =
         (build_slicing_result h.statement formula prl Post_slicing) :: (post_slicing elem t provers_list)
 
 
-let rec apply_and_remove slicing_type vcgen_results elem provers_list  =
+let rec apply_and_remove slicing_type elem vcgen_results  provers_list  =
   match vcgen_results with
   | [] -> []
-  | h :: t -> (post_slicing elem vcgen_results provers_list) @ (apply_and_remove slicing_type t h provers_list)
+  | h :: t -> (post_slicing elem vcgen_results provers_list) @ (apply_and_remove slicing_type h t provers_list)
 
 let slicing slice_type vcgen_results provers_list = 
   match slice_type with
-  | Post_slicing -> apply_and_remove Post_slicing (List.tl vcgen_results) (List.hd vcgen_results) provers_list 
+  | Post_slicing -> apply_and_remove Post_slicing (List.hd vcgen_results) (List.tl vcgen_results) provers_list 
   | Prec_slicing -> raise (Invalid_argument "Precondition-based slicing not yet implemented")
   | Spec_slicing -> raise (Invalid_argument "Specification-based slicing not yet implemented")
 
@@ -583,6 +744,7 @@ let get_var_name_from_lval (lh,_) =
 	| _ -> "NOT_A_VARIABLE" 
 
 
+
 (* If code content is type AInvariant returns the predicate, else true *)
 let get_predicate_named code_content = 
 	match code_content with 
@@ -606,6 +768,13 @@ let build_invariant cod_annot_list predicate =
 	 			Logic_const.pand (inv,acc) 
 	 		else acc
 	) cod_annot_list predicate
+
+
+let filterReturn vcgen_result =
+   if (isReturnStmt vcgen_result.statement.skind) then false else true 
+
+let removeReturnStatement vcgen_results = 
+  List.filter filterReturn vcgen_results 
 
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
 class replace_term_on_predicate prj  exprterm var_name = object (self)
@@ -685,7 +854,7 @@ let rec replace_statement_wp statement predicate =
 	| Instr i -> 
 			let new_predicate = replace_instruction i predicate in
 			build_vcgen_result_simple statement new_predicate 
-	| Return _ ->
+	| Return (_,_) ->
 			build_vcgen_result_simple statement predicate 
 	| Goto _ -> 
 			build_vcgen_result_simple statement  predicate 
@@ -772,7 +941,7 @@ let calculus () =
      Cfg.clearFileCFG c_file;
      computeCfg ();
      let vcgen_results = calculus () in
-     let slicing_results = slicing Post_slicing vcgen_results [Alt_ergo] in
+     let slicing_results = slicing Post_slicing (removeReturnStatement vcgen_results) [Alt_ergo;CVC3;CVC4;Yices] in
      print_slice_results slicing_results
 
 
