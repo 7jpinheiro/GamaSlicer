@@ -2,9 +2,8 @@ FRAMAC_SHARE  = /usr/local/share/frama-c
 FRAMAC_LIBDIR = $(shell frama-c -print-lib-path)
 
 PLUGIN_NAME     := GamaSlicer
-PLUGIN_CMO      :=  towhy3 vcgen provers slicing gs_printer register
+PLUGIN_CMO      := gs_options towhy3 vcgen provers slicing gs_printer gs_register
 
-VERBOSEMAKE=yes
 
 #WHYLIB := /Users/jpinheiro/.opam/system/lib/why3
 WHYLIB := /usr/local/lib/ocaml/4.01.0/why3

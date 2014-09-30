@@ -1,18 +1,10 @@
 open Cil_types
-open Plugin
 open Printer
 open Why3
 open Why3.Call_provers
 
 
-module Self = 
-  Register
-    (struct
-       let name = "gamaSlicer" 
-       let shortname = "gamaSlicer"
-       let help = "A frama-c plugin that implements assertion based slicing"
-     end)
-
+module Gs_options = Gs_options
 
 (***************)
 (* environment *)
@@ -40,13 +32,13 @@ let get_lvar lv =
   try
     Hashtbl.find bound_vars lv.lv_id
   with Not_found ->
-    Self.fatal "logic variable %s (%d) not found" lv.lv_name lv.lv_id
+    Gs_options.Self.fatal "logic variable %s (%d) not found" lv.lv_name lv.lv_id
 
 let program_vars = Hashtbl.create 257
 
 let create_var v is_mutable =
   let vs = Term.create_vsymbol (Ident.id_fresh v.vname) Ty.ty_int in 
-  Self.result "create program variable %s (%d)" v.vname v.vid;
+  Gs_options.Self.result "create program variable %s (%d)" v.vname v.vid;
   Hashtbl.add program_vars v.vname (vs,is_mutable,Ty.ty_int );
   vs
 
@@ -54,7 +46,7 @@ let get_var v =
   try
     Hashtbl.find program_vars v.vname
   with Not_found ->
-    Self.fatal "program variable %s (%d) not found" v.vname v.vid
+    Gs_options.Self.fatal "program variable %s (%d) not found" v.vname v.vid
 
 
 let rec getToBound toBound = function
@@ -230,3 +222,5 @@ let rec pred2why predicate =
   | Pfreeable _            -> raise (Invalid_argument "Logic predicate with type: Pfreeable not yet implemented")
   | Pfresh _               -> raise (Invalid_argument "Logic predicate with type: Pfresh not yet implemented")
   | Psubtype _             -> raise (Invalid_argument "Logic predicate with type: Psubtype not yet implemented")
+
+

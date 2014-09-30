@@ -1,7 +1,8 @@
 open Cil_types
 open Printer
-open Why3 
+open Why3
 
+module Options = Gs_options
 
 (* Datatype that stores the stmt proof obligation *)
 type po = 
@@ -35,15 +36,15 @@ let get_opt = function
 let gen_po predicate = {
   proof_obligation = 
     try
-      Towhy3.Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
+      Options.Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
       Towhy3.pred2why predicate 
     with
-    | Not_found -> Towhy3.Self.fatal "lsymbol not found"
+    | Not_found -> Options.Self.fatal "lsymbol not found"
     | Ty.TypeMismatch(ty1,ty2) -> 
-                    Towhy3.Self.result" BEGIN ERROR REPORT\n ";
+                    Options.Self.result" BEGIN ERROR REPORT\n ";
                     let equal = Ty.ty_equal ty1 ty2 in
-                    Towhy3.Self.result"Ty1 == ty2: %b\n" equal; 
-                    Towhy3.Self.fatal" END ERROR REPORT\n "
+                    Options.Self.result"Ty1 == ty2: %b\n" equal; 
+                    Options.Self.fatal" END ERROR REPORT\n "
 }
   
 
@@ -279,14 +280,14 @@ let vcgen list_statements predicate =
 
 (* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
-	Towhy3.Self.result "Getting list of statements.\n";
+	Options.Self.result "Getting list of statements.\n";
 	let list_statements = fundec.sallstmts in
 	List.rev list_statements
 
 
 (* Get condition depeding ond the func_bulidcondtion input *)
 let get_Condtion  funspec func_buildcondition =
-	Towhy3.Self.result "Getting Condition.\n";
+	Options.Self.result "Getting Condition.\n";
 	let funbehavior = Cil.find_default_behavior funspec in
 	let post_condition =  func_buildcondition (get_opt funbehavior) Normal in
 	post_condition 
@@ -308,7 +309,7 @@ let apply_if_defition def kf =
 
 
 let calculus () =
-  Towhy3.Self.result "Visting functions.\n";
+  Options.Self.result "Visting functions.\n";
   Globals.Functions.fold
   (
       fun kf acc -> (apply_if_defition (Kernel_function.is_definition kf) kf) @ acc
