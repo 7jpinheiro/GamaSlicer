@@ -4,6 +4,10 @@ open Why3
 
 module Options = Gs_options
 
+type vc_type =
+| Wp
+| Sp
+
 (* Datatype that stores the stmt proof obligation *)
 type po = 
 { 
@@ -92,7 +96,7 @@ let get_logic_vars e func =
 	Cil_datatype.Varinfo.Set.fold 
 		(
 		 fun x acc -> (Cil.cvar_to_lvar x) :: acc
-		) var_set 
+		) var_set []
 
 (* Gets a list of logic_vars from a lval *)
 let get_lval_logic_vars lval =
@@ -162,7 +166,7 @@ let removeReturnStatement vcgen_results =
   List.filter filterReturn vcgen_results 
 
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
-class replace_term_on_predicate prj  exprterm var_name = object 
+class replace_term prj  exprterm var_name = object 
 	inherit Visitor.frama_c_copy  prj 
 	
 	method vterm t =
@@ -176,15 +180,13 @@ class replace_term_on_predicate prj  exprterm var_name = object
 	end
 
 
-
-(* Computes cfg for all functions and fills in info information on fundec (smaxstmid and sallsmts) *)
-let computeCfg () =
-	Globals.Functions.iter_on_fundecs
-	(
-      fun fundec -> 
-      	Cfg.prepareCFG fundec;
-      	Cfg.computeCFGInfo fundec false  
-	)
+(* Generic sequence rule *)
+let rec sequence list_statements predicate func =
+  match list_statements with
+  |[] -> []
+  | s::stail -> 
+    let vcgen_result = func s predicate in
+    vcgen_result::(sequence stail vcgen_result.predicate func)    
 
 (* Tests if the vcgen_result list is empty, if it is returns the predicate true,
  if contains elements returns the last resulting predicate *)
@@ -196,33 +198,25 @@ let ifVcgenResultIsEmpty vcgen_result_list =
 		last_vcgen_result.predicate
 
 (* Replaces the predicate  *)
-let replace lval exp predicate  =
+let replace_wp lval exp predicate  =
 	let folded_exp = Cil.constFold false exp in 
 	let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
     let var_name = get_var_name_from_lval lval in
     if (var_name <> "NOT_A_VARIABLE") then 
-   		 Visitor.visitFramacPredicateNamed (new replace_term_on_predicate (Project.current ()) exp_term var_name) predicate 
+   		 Visitor.visitFramacPredicateNamed (new replace_term (Project.current ()) exp_term var_name) predicate 
     	else predicate
-
-
-(* Generic sequence rule *)
-let rec sequence list_statements predicate func =
-	match list_statements with
-	|[] -> []
-	| s::stail -> 
-		let vcgen_result = func s predicate in
-		vcgen_result::(sequence stail vcgen_result.predicate func)				
+		
 
 
 (* Matches the instruction with the definitions and replaces the predicate
  on the instruction, generating a new predicate resulting from the replacement *)
-let replace_instruction inst predicate = 
+let replace_instruction_wp inst predicate = 
 	match inst with
-	| Set (lval,exp,location) -> replace lval exp predicate 						(* Wp assigment rule *)
+	| Set (lval,exp,location) -> replace_wp lval exp predicate 						(* Wp assigment rule *)
 	| Call (lval_op,exp,exp_list,location) -> predicate
 	| Skip location -> predicate 
-    | Asm _ -> predicate
-    | Code_annot _ -> predicate
+  | Asm _ -> predicate
+  | Code_annot _ -> predicate
 
 (* Conditional wp rule, with sequence rule already aplied to the two blocks*)
 let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_result_b2_list =
@@ -237,7 +231,7 @@ let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_resul
 let rec replace_statement_wp statement predicate =
 	match statement.skind with 
 	| Instr i -> 
-			let new_predicate = replace_instruction i predicate in
+			let new_predicate = replace_instruction_wp i predicate in
 			build_vcgen_result_simple statement new_predicate 
 	| Return (_,_) ->
 			build_vcgen_result_simple statement predicate 
@@ -265,54 +259,131 @@ let rec replace_statement_wp statement predicate =
  	| TryFinally _ | TryExcept _ -> 
  			build_vcgen_result_simple statement  predicate  
 
-
-(* Sequence rule of weakeast precondition calculus *)	
+(* Sequence rule of weakeast precondition calculus *) 
 let rec sequence_wp list_statements predicate =
-	match list_statements with
-	|[] -> []
-	| s::stail -> 
-		let vcgen_result = replace_statement_wp s predicate in
-		vcgen_result::(sequence_wp stail vcgen_result.predicate)
+  match list_statements with
+  |[] -> []
+  | s::stail -> 
+    let vcgen_result = replace_statement_wp s predicate in
+    vcgen_result::(sequence_wp stail vcgen_result.predicate)
+
+
+(* Replaces the predicate  *)
+let replace_sp lval exp predicate  =
+  let folded_exp = Cil.constFold false exp in 
+  let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
+  let logic_var_list = get_lval_logic_vars lval in 
+  let llogic_var = List.hd logic_var_list in 
+  let q_logic_var = Cil_const.make_logic_var_quant "v" llogic_var.lv_type in 
+  let qtlvar = Logic_const.tvar q_logic_var in 
+  let tlvar = Logic_const.tvar llogic_var in
+    let var_name = get_var_name_from_lval lval in
+    if (var_name <> "NOT_A_VARIABLE") then 
+      let new_predicate = Visitor.visitFramacPredicateNamed (new replace_term (Project.current ()) qtlvar var_name) predicate in
+      let new_term = Visitor.visitFramacTerm (new replace_term (Project.current ()) qtlvar var_name) exp_term in
+      let eq_predicate = Logic_const.prel (Req,tlvar,new_term) in 
+      let and_predicate = Logic_const.pand (new_predicate,eq_predicate) in
+      Logic_const.pexists ([q_logic_var],and_predicate)
+      else predicate
+
+(* Matches the instruction with the definitions and replaces the predicate
+ on the instruction, generating a new predicate resulting from the replacement *)
+let replace_instruction_sp inst predicate = 
+  match inst with
+  | Set (lval,exp,location) -> replace_sp lval exp predicate             (* Wp assigment rule *)
+  | Call (lval_op,exp,exp_list,location) -> predicate
+  | Skip location -> predicate 
+  | Asm _ -> predicate
+  | Code_annot _ -> predicate
+
+
+(* Matches the statement with the definitions and replaces the predicate
+ on the statement, generating a new predicate resulting from the replacement of wp *)
+let rec replace_statement_sp statement predicate =
+  match statement.skind with 
+  | Instr i -> 
+      let new_predicate = replace_instruction_sp i predicate in
+      build_vcgen_result_simple statement new_predicate 
+  | Return (_,_) ->
+      build_vcgen_result_simple statement predicate 
+  | Goto _ -> 
+      build_vcgen_result_simple statement  predicate 
+  | Break _ ->
+      build_vcgen_result_simple statement  predicate  
+  | Continue _ -> 
+      build_vcgen_result_simple statement  predicate  
+  | If (e,b1,b2,loc) ->
+      let logic_e = Logic_utils.expr_to_term ~cast:true e in
+      let vcgen_result_b1_list = sequence (List.rev b1.bstmts) predicate replace_statement_sp in
+      let vcgen_result_b2_list = sequence (List.rev b2.bstmts) predicate replace_statement_sp in
+      conditional_wp statement logic_e predicate vcgen_result_b1_list vcgen_result_b2_list
+  | Switch (e,_,_,_) ->
+      build_vcgen_result_simple statement  predicate 
+  | Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
+      let invariant = build_invariant ca_list Logic_const.ptrue in
+      let vcgen_result_list = sequence (List.rev block.bstmts) predicate replace_statement_sp in
+      build_vcgen_result_loop statement invariant vcgen_result_list
+  | Block _ ->
+      build_vcgen_result_simple statement  predicate 
+  | UnspecifiedSequence _ ->
+      build_vcgen_result_simple statement  predicate  
+  | TryFinally _ | TryExcept _ -> 
+      build_vcgen_result_simple statement  predicate  
+
+
+(* Sequence rule of strongest postcondition calculus *) 
+let rec sequence_sp list_statements predicate =
+  match list_statements with
+  |[] -> []
+  | s::stail -> 
+    let vcgen_result = replace_statement_sp s predicate in
+    vcgen_result::(sequence_sp stail vcgen_result.predicate)
 
 (* Genetares proof obligations, and returns a list with vcgen_result *)
-let vcgen list_statements predicate =
-	sequence_wp list_statements predicate
-
-(* Returns a reversed list of statements found in fundec.sallstmts after the computation of the cfg *)
+let vcgen vc_type list_statements pre_condt post_condt =
+  match vc_type with
+	| Wp -> List.rev (sequence_wp (List.rev list_statements) post_condt)
+ (*) | Sp -> sequence_sp list_statements pre_condt*)
+  | _ -> raise (Invalid_argument "SP not implemented")
+(* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
 	Options.Self.result "Getting list of statements.\n";
 	let list_statements = fundec.sallstmts in
-	List.rev list_statements
+  list_statements
 
-
-(* Get condition depeding ond the func_bulidcondtion input *)
-let get_Condtion  funspec func_buildcondition =
-	Options.Self.result "Getting Condition.\n";
-	let funbehavior = Cil.find_default_behavior funspec in
-	let post_condition =  func_buildcondition (get_opt funbehavior) Normal in
+(* Get postcondition depeding ond the func_bulidcondtion input *)
+let get_PostCondtion  funbehavior  =
+	let post_condition =  Ast_info.behavior_postcondition (get_opt funbehavior) Normal in
 	post_condition 
 
+(* Get postcondition depeding ond the func_bulidcondtion input *)
+let get_PreCondtion  funbehavior  =
+  let pre_condition =  Ast_info.behavior_precondition (get_opt funbehavior) in
+  pre_condition 
+
 (* Visits and applys if there kf has definition *)
-let apply_if_defition def kf =
+let apply_if_defition vc_type def kf =
 	match def with
 	|true ->
 	     	let fundec = Kernel_function.get_definition kf in
       	let funspec = Annotations.funspec kf in 
       	let list_behaviors = Annotations.behaviors kf in 
-        let formals =  List.map (fun v -> Towhy3.create_var v false) (Kernel_function.get_formals kf) in
+        let formals = List.map (fun v -> Towhy3.create_var v false) (Kernel_function.get_formals kf) in
         let locals = List.map (fun v -> Towhy3.create_var v true) (Kernel_function.get_locals kf) in
-        let post_condt = get_Condtion funspec  Ast_info.behavior_postcondition  in
+        let funbehavior = Cil.find_default_behavior funspec in
+        let pre_condt = get_PreCondtion funbehavior in 
+        let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
-        let spo_list = vcgen list_statements post_condt in
-        List.rev spo_list	
+        let vc_list = vcgen vc_type list_statements post_condt in
+        vc_list	
 	|false -> []
 
 
-let calculus () =
+let calculus vc_type =
   Options.Self.result "Visting functions.\n";
   Globals.Functions.fold
   (
-      fun kf acc -> (apply_if_defition (Kernel_function.is_definition kf) kf) @ acc
+      fun kf acc -> (apply_if_defition vc_type (Kernel_function.is_definition kf) kf) @ acc
   ) []
 
 

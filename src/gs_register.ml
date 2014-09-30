@@ -1,8 +1,7 @@
 open Gs_options
+open Vcgen
 open Slicing
 open Gs_printer
-
-
 
 
 (* Computes cfg for all functions and fills in info information on fundec (smaxstmid and sallsmts) *)
@@ -22,8 +21,8 @@ let computeCfg () =
      let c_file = Ast.get () in
      Cfg.clearFileCFG c_file;
      computeCfg ();
-     let vcgen_results = Vcgen.calculus () in
-     let slicing_results = slicing Post_slicing (Vcgen.removeReturnStatement vcgen_results) [Alt_ergo;CVC3;CVC4;Yices] in
+     let vcgen_results = calculus Wp in
+     let slicing_results = slicing Post_slicing (removeReturnStatement vcgen_results) [Alt_ergo;CVC3;CVC4;Yices] in
      print_slice_results slicing_results
 
 
