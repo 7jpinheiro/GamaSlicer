@@ -268,7 +268,7 @@ let rec sequence_wp list_statements predicate =
     vcgen_result::(sequence_wp stail vcgen_result.predicate)
 
 
-(* Replaces the predicate  *)
+(* Replaces the predicate using sp assigment rule *)
 let replace_sp lval exp predicate  =
   let folded_exp = Cil.constFold false exp in 
   let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
@@ -286,6 +286,16 @@ let replace_sp lval exp predicate  =
       Logic_const.pexists ([q_logic_var],and_predicate)
       else predicate
 
+
+
+(* Conditional sp rule, with sequence rule already aplied to the two blocks*)
+let conditional_sp statement  vcgen_result_b1_list vcgen_result_b2_list =
+  let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
+  let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
+  let new_predicate = Logic_const.por (newpredicateb1, newpredicateb2) in
+  build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
+
+
 (* Matches the instruction with the definitions and replaces the predicate
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction_sp inst predicate = 
@@ -296,6 +306,21 @@ let replace_instruction_sp inst predicate =
   | Asm _ -> predicate
   | Code_annot _ -> predicate
 
+
+let bin2rel bin =
+  match bin with
+  | Lt -> Rlt  
+  | Gt -> Rgt 
+  | Le -> Rle  
+  | Ge -> Rge 
+  | Eq -> Req 
+  | Ne -> Rneq
+  | _ -> raise (Invalid_argument "Bin2rel: Only arithmetic comparison implemented\n")
+
+let binTerm2relPred term =
+  match term.term_node with
+  | TBinOp (bin,t1,t2) ->  Logic_const.unamed (Prel (bin2rel bin,t1,t2))
+  | _ -> raise (Invalid_argument "BinTerm2rel: Only Binary operations implemented\n")
 
 (* Matches the statement with the definitions and replaces the predicate
  on the statement, generating a new predicate resulting from the replacement of wp *)
@@ -314,9 +339,13 @@ let rec replace_statement_sp statement predicate =
       build_vcgen_result_simple statement  predicate  
   | If (e,b1,b2,loc) ->
       let logic_e = Logic_utils.expr_to_term ~cast:true e in
-      let vcgen_result_b1_list = sequence (List.rev b1.bstmts) predicate replace_statement_sp in
-      let vcgen_result_b2_list = sequence (List.rev b2.bstmts) predicate replace_statement_sp in
-      conditional_wp statement logic_e predicate vcgen_result_b1_list vcgen_result_b2_list
+      let pred_logic_e = binTerm2relPred logic_e in 
+      let n_pred_logic_e = Logic_const.pnot pred_logic_e in 
+      let predicateb1 = Logic_const.pand (pred_logic_e,predicate) in
+      let predicateb2 = Logic_const.pand (n_pred_logic_e,predicate) in  
+      let vcgen_result_b1_list = sequence b1.bstmts predicateb1 replace_statement_sp in
+      let vcgen_result_b2_list = sequence b2.bstmts predicateb2 replace_statement_sp in
+      conditional_sp statement vcgen_result_b1_list vcgen_result_b2_list
   | Switch (e,_,_,_) ->
       build_vcgen_result_simple statement  predicate 
   | Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
@@ -343,8 +372,8 @@ let rec sequence_sp list_statements predicate =
 let vcgen vc_type list_statements pre_condt post_condt =
   match vc_type with
 	| Wp -> List.rev (sequence_wp (List.rev list_statements) post_condt)
- (*) | Sp -> sequence_sp list_statements pre_condt*)
-  | _ -> raise (Invalid_argument "SP not implemented")
+  | Sp -> sequence_sp list_statements pre_condt
+
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
 	Options.Self.result "Getting list of statements.\n";
@@ -374,7 +403,7 @@ let apply_if_defition vc_type def kf =
         let pre_condt = get_PreCondtion funbehavior in 
         let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
-        let vc_list = vcgen vc_type list_statements post_condt in
+        let vc_list = vcgen vc_type list_statements pre_condt post_condt in
         vc_list	
 	|false -> []
 
