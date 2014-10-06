@@ -38,7 +38,6 @@ let program_vars = Hashtbl.create 257
 
 let create_var v is_mutable =
   let vs = Term.create_vsymbol (Ident.id_fresh v.vname) Ty.ty_int in 
-  Gs_options.Self.result "create program variable %s (%d)" v.vname v.vid;
   Hashtbl.add program_vars v.vname (vs,is_mutable,Ty.ty_int );
   vs
 
@@ -199,28 +198,30 @@ let rel2why rlt term1 term2 =
 
 let rec pred2why predicate = 
   match predicate.content with
-  | Pfalse                 -> Term.t_false
-  | Ptrue                  -> Term.t_true
-  | Pnot p_not             -> Term.t_not (pred2why p_not)
-  | Pand (pand1,pand2)     -> Term.t_and (pred2why pand1) (pred2why pand2)
-  | Por (por1,por2)        -> Term.t_or  (pred2why por1) (pred2why por2)
-  | Pimplies (pim1,pim2)   -> Term.t_implies (pred2why pim1) (pred2why pim2)
-  | Piff (piff1,piff2)     -> Term.t_iff (pred2why piff1) (pred2why piff2)
-  | Pif (tif1,pif1,pif2)   -> Term.t_if (term2why tif1) (pred2why pif1) (pred2why pif2)
-  | Prel (rlt,trl1,trl2)   -> rel2why rlt trl1 trl2
-  | Papp _                 -> raise (Invalid_argument "Logic predicate with type: Papp not yet implemented") 
-  | Pseparated _           -> raise (Invalid_argument "Logic predicate with type: Pseparated not yet implemented")
-  | Pxor _                 -> raise (Invalid_argument "Logic predicate with type: Pxor not yet implemented")
-  | Plet _                 -> raise (Invalid_argument "Logic predicate with type: Plet not yet implemented")
-  | Pforall _              -> raise (Invalid_argument "Logic predicate with type: Pforall not yet implemented")
-  | Pexists _              -> raise (Invalid_argument "Logic predicate with type: Pexists not yet implemented")
-  | Pat  _                 -> raise (Invalid_argument "Logic predicate with type: Pat not yet implemented")
-  | Pvalid_read _          -> raise (Invalid_argument "Logic predicate with type: Pvalid_read not yet implemented")
-  | Pvalid _               -> raise (Invalid_argument "Logic predicate with type: Pvalid not yet implemented")
-  | Pinitialized _         -> raise (Invalid_argument "Logic predicate with type: Pinitialized not yet implemented")
-  | Pallocable _           -> raise (Invalid_argument "Logic predicate with type: Pallocable not yet implemented")
-  | Pfreeable _            -> raise (Invalid_argument "Logic predicate with type: Pfreeable not yet implemented")
-  | Pfresh _               -> raise (Invalid_argument "Logic predicate with type: Pfresh not yet implemented")
-  | Psubtype _             -> raise (Invalid_argument "Logic predicate with type: Psubtype not yet implemented")
+  | Pfalse                    -> Term.t_false
+  | Ptrue                     -> Term.t_true
+  | Pnot p_not                -> Term.t_not (pred2why p_not)
+  | Pand (pand1,pand2)        -> Term.t_and (pred2why pand1) (pred2why pand2)
+  | Por (por1,por2)           -> Term.t_or  (pred2why por1) (pred2why por2)
+  | Pimplies (pim1,pim2)      -> Term.t_implies (pred2why pim1) (pred2why pim2)
+  | Piff (piff1,piff2)        -> Term.t_iff (pred2why piff1) (pred2why piff2)
+  | Pif (tif1,pif1,pif2)      -> Term.t_if (term2why tif1) (pred2why pif1) (pred2why pif2)
+  | Prel (rlt,trl1,trl2)      -> rel2why rlt trl1 trl2
+  | Pforall (fallvar,fall_p)  -> let f_l = List.map create_lvar fallvar in
+                                 Term.t_forall_close f_l [] (pred2why fall_p)
+  | Pexists (exvar,ex_p)      -> let e_l = List.map create_lvar exvar in
+                                 Term.t_exists_close e_l [] (pred2why ex_p)
+  | Papp _                    -> raise (Invalid_argument "Logic predicate with type: Papp not yet implemented") 
+  | Pseparated _              -> raise (Invalid_argument "Logic predicate with type: Pseparated not yet implemented")
+  | Pxor _                    -> raise (Invalid_argument "Logic predicate with type: Pxor not yet implemented")
+  | Plet _                    -> raise (Invalid_argument "Logic predicate with type: Plet not yet implemented")
+  | Pat  _                    -> raise (Invalid_argument "Logic predicate with type: Pat not yet implemented")
+  | Pvalid_read _             -> raise (Invalid_argument "Logic predicate with type: Pvalid_read not yet implemented")
+  | Pvalid _                  -> raise (Invalid_argument "Logic predicate with type: Pvalid not yet implemented")
+  | Pinitialized _            -> raise (Invalid_argument "Logic predicate with type: Pinitialized not yet implemented")
+  | Pallocable _              -> raise (Invalid_argument "Logic predicate with type: Pallocable not yet implemented")
+  | Pfreeable _               -> raise (Invalid_argument "Logic predicate with type: Pfreeable not yet implemented")
+  | Pfresh _                  -> raise (Invalid_argument "Logic predicate with type: Pfresh not yet implemented")
+  | Psubtype _                -> raise (Invalid_argument "Logic predicate with type: Psubtype not yet implemented")
 
 
