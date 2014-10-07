@@ -4,6 +4,8 @@ open Why3
 open Provers
 open Slicing
 open Vcgen
+open Graph
+open Slicegraph
 
 (* Prints a predicate(condition in this case) *)
 let print_why3_term term =
@@ -76,4 +78,12 @@ let print_slice_results results =
             print_slice_result x;
             Gs_options.Self.result "--------------------------\n\n"
   ) results
+
+
+let print_vertex g =
+    G.iter_vertex( 
+              fun v -> let stmt = G.V.label v in
+                       print_statement stmt
+                 ) g
+
 
