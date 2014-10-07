@@ -35,23 +35,51 @@ module W = struct
 end
 module Dij = Path.Dijkstra(G)(W)
 
-let create_stmt_vertex stmt = G.V.create stmt
 
-let rec create_edges vertex_list =
+let vertex_hash = Hashtbl.create 257
+
+let getKey v =
+  let stament = G.V.label v in
+  let key = stament.sid in
+  key
+
+let add_vertex v =
+  let key = getKey v in 
+  Hashtbl.add vertex_hash key v;
+  v
+
+let get_vertex key =
+  try
+    Hashtbl.find vertex_hash key
+  with Not_found ->
+    Gs_options.Self.fatal "Vertex not found"
+
+let create_stmt_vertex stmt = add_vertex (G.V.create stmt)
+
+let rec create_edges v vertex_list =
   match vertex_list with
   |[] -> []
-  |[q] -> []
-  | x :: y :: tail -> let edge = E.create x 1 y in 
-                      edge :: (create_edges tail) 
+  | x :: tail -> let edge = E.create v 1 x in 
+                      edge :: (create_edges x tail) 
 
 let createSliceGraph vcgen_list =
   let g = G.create () in
   let vertex_list = List.fold_right(fun x acc -> create_stmt_vertex x.statement :: acc ) vcgen_list [] in
-  let edge_list = create_edges vertex_list in
+  let edge_list = create_edges (List.hd vertex_list) (List.tl vertex_list) in
   List.iter(fun vert -> G.add_vertex g vert) vertex_list;
   List.iter(fun edge -> G.add_edge_e g edge) edge_list;
   g
 
+let create_sliced_edge slice_result =
+  let vertex_1 = get_vertex slice_result.stmt_1.sid in
+  let vertex_2 = get_vertex slice_result.stmt_2.sid in 
+  let edge = E.create vertex_1 1 vertex_2 in
+  edge
+
+let addSlicedEdges slices_results g =
+  let valid_results = List.filter (fun x -> (isValid x.prover_result)) slices_results in
+  List.iter(fun x -> G.add_edge_e g (create_sliced_edge x)) valid_results;
+  g
 
 
 

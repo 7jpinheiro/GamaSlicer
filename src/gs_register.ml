@@ -21,13 +21,12 @@ let computeCfg () =
      let c_file = Ast.get () in
      Cfg.clearFileCFG c_file;
      computeCfg ();
-     let vcgen_results = calculus Sp in
-     let slice_g = Slicegraph.createSliceGraph vcgen_results in 
-     print_vertex slice_g
-     (*let slicing_results = slicing Post_slicing (removeReturnStatement vcgen_results) [Alt_ergo;CVC3;CVC4;Yices] in
-     print_slice_results slicing_results
-     List.iter (fun x -> print_predicate x.predicate) vcgen_results  *)
+     let vcgen_results = calculus Wp in
+     let vcl = removeReturnStatement vcgen_results in
+     let slice_g = Slicegraph.createSliceGraph vcl in 
+     let slicing_results = slicing Post_slicing  vcl [Alt_ergo;CVC3;CVC4;Yices] in
+     let n_slice_g = Slicegraph.addSlicedEdges slicing_results slice_g in 
+     print_slice_results slicing_results; 
+     print_edges slice_g
 
-
-     
 let () = Db.Main.extend run 

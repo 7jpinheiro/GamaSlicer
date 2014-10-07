@@ -62,7 +62,8 @@ let print_prover_result prover_result =
   
 	
 let print_slice_result result =
-  print_statement result.slice_statement;
+  print_statement result.stmt_1;
+  print_statement result.stmt_2;
   print_why3_term result.formula;
   List.iter
   (
@@ -86,4 +87,14 @@ let print_vertex g =
                        print_statement stmt
                  ) g
 
+let print_edges g =
+    G.iter_edges(
+      fun v1 v2 -> let stmt1 = (G.V.label v1) in
+                   let stmt2 = (G.V.label v2) in
+                   Gs_options.Self.result "<<><><><>>";
+                   print_statement stmt1;
+                   Gs_options.Self.result "--------->";
+                   print_statement stmt2
+      ) g
+  
 

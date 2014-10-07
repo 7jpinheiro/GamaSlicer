@@ -11,7 +11,8 @@ type assert_slicing_type =
 
 type slicing_result =
 {
-  mutable slice_statement : stmt ;                    (* The statement  *)
+  mutable stmt_1 : stmt ;
+  mutable stmt_2 : stmt ;                       (* The statement  *)
   mutable formula : Term.term;                  (* The statement is LoopS, if contains a Loop with one block *)
   mutable prover_result: prover_result list ;                         (* The statement is LoopS, if contains a Loop with one block *)
   mutable slicing_type: assert_slicing_type;    (* The statement is LoopS, if contains a Loop with one block *)
@@ -24,14 +25,19 @@ let build_imp elem1 elem2 =
   let b_form = Towhy3.bound_vars form in
   b_form
 
-let build_slicing_result statement form prover_result slicing_type = 
+let build_slicing_result statement1 statement2 form prover_result slicing_type = 
   {
-   slice_statement = statement;
+   stmt_1 = statement1;
+   stmt_2 = statement2;
    formula = form;
    slicing_type = slicing_type;
    prover_result = prover_result;
   }
 
+let rec isValid prover_result =
+  match prover_result with
+  | [] -> false
+  | x::t -> if ((String.compare x.result "Valid")=0) then true else isValid t
 
 let rec post_slicing elem vcgen_results provers_list =
   match vcgen_results with
@@ -39,7 +45,7 @@ let rec post_slicing elem vcgen_results provers_list =
   | h :: t -> 
         let formula = build_imp elem h in
         let prl = List.map (fun prov -> send_to_prover formula prov) provers_list in 
-        (build_slicing_result h.statement formula prl Post_slicing) :: (post_slicing elem t provers_list)
+        (build_slicing_result elem.statement h.statement formula prl Post_slicing) :: (post_slicing elem t provers_list)
 
 
 let rec apply_and_remove slicing_type elem vcgen_results  provers_list  =
