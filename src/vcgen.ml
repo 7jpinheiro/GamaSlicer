@@ -404,7 +404,7 @@ let apply_if_defition vc_type def kf =
         let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
         let vc_list = vcgen vc_type list_statements pre_condt post_condt in
-        vc_list	
+        vc_list
 	|false -> []
 
 

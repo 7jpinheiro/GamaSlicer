@@ -62,7 +62,7 @@ let rec create_edges v vertex_list =
   | x :: tail -> let edge = E.create v 1 x in 
                       edge :: (create_edges x tail) 
 
-let createSliceGraph vcgen_list =
+let create_slice_graph vcgen_list =
   let g = G.create () in
   let vertex_list = List.fold_right(fun x acc -> create_stmt_vertex x.statement :: acc ) vcgen_list [] in
   let edge_list = create_edges (List.hd vertex_list) (List.tl vertex_list) in
@@ -76,10 +76,25 @@ let create_sliced_edge slice_result =
   let edge = E.create vertex_1 1 vertex_2 in
   edge
 
-let addSlicedEdges slices_results g =
+let add_sliced_edges slices_results g =
   let valid_results = List.filter (fun x -> (isValid x.prover_result)) slices_results in
   List.iter(fun x -> G.add_edge_e g (create_sliced_edge x)) valid_results;
   g
+
+
+let rec build_path edges_list  =
+  match edges_list with
+  |[] -> []
+  |[e] -> [(G.E.src e)]@[(G.E.dst e)]
+  |x::tail -> (G.E.src x)::(build_path tail)   
+
+let slice g vcgen_list = 
+  let first_stmt = (List.hd vcgen_list).statement in
+  let last_stmt = (List.hd (List.rev vcgen_list)).statement in
+  let first_vertex = get_vertex first_stmt.sid in 
+  let last_vertex = get_vertex last_stmt.sid in
+  let (p,tw) = Dij.shortest_path g first_vertex last_vertex in 
+  build_path p 
 
 
 

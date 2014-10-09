@@ -32,6 +32,9 @@ let print_statement stmt =
 	Gs_options.Self.result "Statement: %a" pp_stmt stmt;
   Gs_options.Self.result "S_id: %d\n" stmt.sid
 
+let print_simple_statement stmt = 
+  Gs_options.Self.result "%a" pp_stmt stmt
+
 (* Prints a term *)
 let print_term term =
 	Gs_options.Self.result "Term: %a\n" pp_term term
@@ -97,4 +100,12 @@ let print_edges g =
                    print_statement stmt2
       ) g
   
+let print_path edges_list =
+  Gs_options.Self.result "--------------------------\n\n";
+  Gs_options.Self.result "Sliced program: ";
+  List.iter(
+            fun x -> let stmt = (G.V.label x) in
+                     print_simple_statement stmt
+           ) edges_list
+
 

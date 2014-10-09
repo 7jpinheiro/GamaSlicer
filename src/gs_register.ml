@@ -23,10 +23,12 @@ let computeCfg () =
      computeCfg ();
      let vcgen_results = calculus Wp in
      let vcl = removeReturnStatement vcgen_results in
-     let slice_g = Slicegraph.createSliceGraph vcl in 
+     let slice_g = Slicegraph.create_slice_graph vcl in 
      let slicing_results = slicing Post_slicing  vcl [Alt_ergo;CVC3;CVC4;Yices] in
-     let n_slice_g = Slicegraph.addSlicedEdges slicing_results slice_g in 
-     print_slice_results slicing_results; 
-     print_edges slice_g
+     let n_slice_g = Slicegraph.add_sliced_edges slicing_results slice_g in 
+     (*print_slice_results slicing_results; 
+     print_edges slice_g *) 
+     let sliced_path = Slicegraph.slice n_slice_g vcl in
+     print_path sliced_path  
 
 let () = Db.Main.extend run 
