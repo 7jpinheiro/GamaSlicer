@@ -23,7 +23,7 @@ type vcgen_result =
 }(* Datatype that stores the type of statement, 
 each vcgen_result list comes from a block of that statement *)
 and vcgen_type =
-| SimpleS 															(* The statement is SimpleS, if contains no block *)
+| SimpleS 															         (* The statement is SimpleS, if contains no block *)
 | IfS  of vcgen_result list * vcgen_result list 					(* The statement is Ifs, if contains a If with blocks *)
 | BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
 | LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
@@ -377,7 +377,7 @@ let vcgen vc_type list_statements pre_condt post_condt =
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
 	Options.Self.result "Getting list of statements.\n";
-	let list_statements = fundec.sallstmts in
+	let list_statements = fundec.sbody.bstmts in
   list_statements
 
 (* Get postcondition depeding ond the func_bulidcondtion input *)

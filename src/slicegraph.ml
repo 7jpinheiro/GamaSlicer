@@ -36,6 +36,17 @@ end
 module Dij = Path.Dijkstra(G)(W)
 
 
+let is_empty l =
+  match l with
+  |[] -> true
+  |x::y -> false
+
+
+let first_vertex = ref (G.V.create Cil.dummyStmt)
+
+let last_vertex = ref (G.V.create Cil.dummyStmt)
+
+
 let vertex_hash = Hashtbl.create 257
 
 let getKey v =
@@ -62,12 +73,36 @@ let rec create_edges v vertex_list =
   | x :: tail -> let edge = E.create v 1 x in 
                       edge :: (create_edges x tail) 
 
+
+let add_block g vcgen_list =
+  match vcgen_list with
+  | [] -> ([],[])
+  | x  -> let vertex_list = List.fold_left(fun acc x -> create_stmt_vertex x.statement :: acc ) [] vcgen_list  in
+          let edge_list = create_edges (List.hd vertex_list) (my_tail (vertex_list)) in
+          List.iter(fun vert -> G.add_vertex g vert) vertex_list;
+          List.iter(fun edge -> G.add_edge_e g edge) edge_list;
+          (vertex_list,edge_list)
+
+
+let add_complex_graph elem g =
+  match elem.stype with
+  | SimpleS -> ()
+  | IfS (vcl1,vcl2) -> let b1 = add_block g vcl1 in
+                       let b2 = add_block g vcl2 in
+                       if(is_empty (fst b1)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b1));
+                       if(is_empty (fst b2)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b2))
+  | BlockS vclb ->     let b = add_block g vclb in
+                       if(is_empty (fst b)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b))
+  | LoopS vcll ->      let bl = add_block g vcll in
+                       if(is_empty (fst bl)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst bl))
+
+
+
 let create_slice_graph vcgen_list =
   let g = G.create () in
-  let vertex_list = List.fold_right(fun x acc -> create_stmt_vertex x.statement :: acc ) vcgen_list [] in
-  let edge_list = create_edges (List.hd vertex_list) (List.tl vertex_list) in
-  List.iter(fun vert -> G.add_vertex g vert) vertex_list;
-  List.iter(fun edge -> G.add_edge_e g edge) edge_list;
+  let b = add_block g vcgen_list in 
+  (* G.add_edge g !first_vertex (List.hd vertex_list); *)
+  List.iter(fun elem -> add_complex_graph elem g) vcgen_list;
   g
 
 let create_sliced_edge slice_result =
@@ -76,17 +111,19 @@ let create_sliced_edge slice_result =
   let edge = E.create vertex_1 1 vertex_2 in
   edge
 
+
 let add_sliced_edges slices_results g =
   let valid_results = List.filter (fun x -> (isValid x.prover_result)) slices_results in
+(*  let valid_edges = List.map (fun x -> create_sliced_edge ) *)
   List.iter(fun x -> G.add_edge_e g (create_sliced_edge x)) valid_results;
   g
 
 
 let rec build_path edges_list  =
   match edges_list with
-  |[] -> []
-  |[e] -> [(G.E.src e)]@[(G.E.dst e)]
-  |x::tail -> (G.E.src x)::(build_path tail)   
+  | [] -> []
+  | [e] -> [(G.E.src e)]@[(G.E.dst e)]
+  | x::tail -> (G.E.src x)::(build_path tail)   
 
 let slice g vcgen_list = 
   let first_stmt = (List.hd vcgen_list).statement in

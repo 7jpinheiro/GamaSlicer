@@ -30,7 +30,7 @@ let create_lvar v =
 
 let get_lvar lv =
   try
-    Hashtbl.find bound_vars lv.lv_id
+    Hashtbl.find bound_vars lv.lv_id 
   with Not_found ->
     Gs_options.Self.fatal "logic variable %s (%d) not found" lv.lv_name lv.lv_id
 
@@ -162,14 +162,18 @@ and bin2why binop t1 t2 =
                    Term.fs_app div_int [term2why t1; term2why t2] Ty.ty_int
   | Mod         -> let mod_int = Theory.ns_find_ls computer_division_theory.Theory.th_export ["mod"] in
                    Term.fs_app mod_int [term2why t1; term2why t2] Ty.ty_int
-  | Shiftlt     -> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
-  | Shiftrt     -> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
-  | Lt          -> raise (Invalid_argument "Binary operation with type: Lt not yet implemented")
-  | Gt          -> raise (Invalid_argument "Binary operation with type: Gt not yet implemented")
-  | Le          -> raise (Invalid_argument "Binary operation with type: Le not yet implemented")
-  | Ge          -> raise (Invalid_argument "Binary operation with type: Ge not yet implemented")
-  | Eq          -> raise (Invalid_argument "Binary operation with type: Eq not yet implemented")
-  | Ne          -> raise (Invalid_argument "Binary operation with type: Ne not yet implemented")
+  | Lt          -> let lt_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix <"]  in
+                   Term.ps_app lt_int [term2why t1; term2why t2]
+  | Gt          -> let gt_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix >"]  in
+                   Term.ps_app gt_int [term2why t1; term2why t2]
+  | Le          -> let le_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix <="] in
+                   Term.ps_app le_int [term2why t1; term2why t2]
+  | Ge          -> let ge_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix >="] in
+                   Term.ps_app ge_int [term2why t1; term2why t2]
+  | Eq          -> let eq_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix ="] in
+                   Term.ps_app eq_int [term2why t1; term2why t2]
+  | Ne          -> let eq_int = Theory.ns_find_ls int_theory.Theory.th_export ["infix ="] in
+                   Term.t_not (Term.ps_app eq_int [term2why t1; term2why t2])
   | BAnd        -> raise (Invalid_argument "Binary operation with type: BAnd not yet implemented")
   | BXor        -> raise (Invalid_argument "Binary operation with type: BXor not yet implemented")
   | BOr         -> raise (Invalid_argument "Binary operation with type: BOr not yet implemented")
@@ -179,6 +183,8 @@ and bin2why binop t1 t2 =
   | IndexPI     -> raise (Invalid_argument "Binary operation with type: IndexPI not yet implemented")
   | MinusPI     -> raise (Invalid_argument "Binary operation with type: MinusPI not yet implemented")
   | MinusPP     -> raise (Invalid_argument "Binary operation with type: MinusPP not yet implemented")
+  | Shiftlt     -> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
+  | Shiftrt     -> raise (Invalid_argument "Binary operation with type: Shiftrt not yet implemented")
 
 
 let rel2why rlt term1 term2 =
@@ -205,7 +211,7 @@ let rec pred2why predicate =
   | Por (por1,por2)           -> Term.t_or  (pred2why por1) (pred2why por2)
   | Pimplies (pim1,pim2)      -> Term.t_implies (pred2why pim1) (pred2why pim2)
   | Piff (piff1,piff2)        -> Term.t_iff (pred2why piff1) (pred2why piff2)
-  | Pif (tif1,pif1,pif2)      -> Term.t_if (term2why tif1) (pred2why pif1) (pred2why pif2)
+  | Pif (tif1,pif1,pif2)      -> Term.t_if (bound_vars(term2why tif1)) (pred2why pif1) (pred2why pif2)
   | Prel (rlt,trl1,trl2)      -> rel2why rlt trl1 trl2
   | Pforall (fallvar,fall_p)  -> let f_l = List.map create_lvar fallvar in
                                  Term.t_forall_close f_l [] (pred2why fall_p)
