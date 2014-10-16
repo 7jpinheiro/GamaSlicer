@@ -46,7 +46,6 @@ let first_vertex = ref (G.V.create Cil.dummyStmt)
 
 let last_vertex = ref (G.V.create Cil.dummyStmt)
 
-
 let vertex_hash = Hashtbl.create 257
 
 let getKey v =
@@ -59,50 +58,45 @@ let add_vertex v =
   Hashtbl.add vertex_hash key v;
   v
 
-let get_vertex key =
-  try
-    Hashtbl.find vertex_hash key
-  with Not_found ->
-    Gs_options.Self.fatal "Vertex not found"
-
 let create_stmt_vertex stmt = add_vertex (G.V.create stmt)
 
-let rec create_edges v vertex_list =
-  match vertex_list with
-  |[] -> []
-  | x :: tail -> let edge = E.create v 1 x in 
-                      edge :: (create_edges x tail) 
+let get_vertex key =
+    Hashtbl.find vertex_hash key
 
+let get_stmt_vertex x = (G.V.label x)
 
-let add_block g vcgen_list =
-  match vcgen_list with
-  | [] -> ([],[])
-  | x  -> let vertex_list = List.fold_left(fun acc x -> create_stmt_vertex x.statement :: acc ) [] vcgen_list  in
-          let edge_list = create_edges (List.hd vertex_list) (my_tail (vertex_list)) in
-          List.iter(fun vert -> G.add_vertex g vert) vertex_list;
-          List.iter(fun edge -> G.add_edge_e g edge) edge_list;
-          (vertex_list,edge_list)
+let cond_vertex = ref []
 
+let get_or_create x = 
+  try 
+   let x_vertex = get_vertex x.sid in
+   x_vertex
+  with
+  | Not_found -> create_stmt_vertex x
 
-let add_complex_graph elem g =
-  match elem.stype with
-  | SimpleS -> ()
-  | IfS (vcl1,vcl2) -> let b1 = add_block g vcl1 in
-                       let b2 = add_block g vcl2 in
-                       if(is_empty (fst b1)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b1));
-                       if(is_empty (fst b2)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b2))
-  | BlockS vclb ->     let b = add_block g vclb in
-                       if(is_empty (fst b)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst b))
-  | LoopS vcll ->      let bl = add_block g vcll in
-                       if(is_empty (fst bl)) then () else G.add_edge g (get_vertex elem.statement.sid) (List.hd (fst bl))
+let isCondtional vcgen =
+  match vcgen.stype with
+  | SimpleS -> false
+  | IfS (vcl1,vcl2) -> true
+  | BlockS vclb -> false
+  | LoopS vcll -> false
 
-
+let add_vertex_and_edges x g =
+    let x_vertex = get_or_create x.statement in
+    if (isCondtional x) then cond_vertex := x_vertex :: !cond_vertex;
+    let stmt_succs = x.statement.succs in
+    let x_edges =  List.map (
+                             fun succ -> 
+                                        let succ_vertex = get_or_create succ in 
+                                        let edge = E.create x_vertex 1 succ_vertex in 
+                                        edge
+                            ) stmt_succs in
+    G.add_vertex g x_vertex;
+    List.iter(fun edge -> G.add_edge_e g edge) x_edges
 
 let create_slice_graph vcgen_list =
   let g = G.create () in
-  let b = add_block g vcgen_list in 
-  (* G.add_edge g !first_vertex (List.hd vertex_list); *)
-  List.iter(fun elem -> add_complex_graph elem g) vcgen_list;
+  List.iter(fun x -> add_vertex_and_edges x g) vcgen_list;
   g
 
 let create_sliced_edge slice_result =
@@ -114,7 +108,6 @@ let create_sliced_edge slice_result =
 
 let add_sliced_edges slices_results g =
   let valid_results = List.filter (fun x -> (isValid x.prover_result)) slices_results in
-(*  let valid_edges = List.map (fun x -> create_sliced_edge ) *)
   List.iter(fun x -> G.add_edge_e g (create_sliced_edge x)) valid_results;
   g
 
@@ -125,11 +118,49 @@ let rec build_path edges_list  =
   | [e] -> [(G.E.src e)]@[(G.E.dst e)]
   | x::tail -> (G.E.src x)::(build_path tail)   
 
+
+
+let get_w elem b g = 
+  match b with
+  | [] -> 0 
+  | x -> let v_b = List.map(fun x -> get_vertex x.sid) b in
+         let b_last_v = List.hd (List.rev v_b) in
+         let (p,tw) = Dij.shortest_path g elem b_last_v in
+         tw 
+
+let get_fi_vertex b1 b2 =
+  match b1,b2 with 
+  |x,[] -> let last_stmt = List.hd (List.rev x) in 
+           let fi = List.hd (last_stmt.succs) in
+           get_vertex fi.sid
+  |x,y  -> let last_stmt = List.hd (List.rev x) in 
+           let fi = List.hd (last_stmt.succs) in
+           get_vertex fi.sid
+  |[],y -> let last_stmt = List.hd (List.rev y) in 
+           let fi = List.hd (last_stmt.succs) in
+           get_vertex fi.sid
+  |[],[] -> raise (Invalid_argument "Empty if statement with no then or else ")
+
+
+let add_conditional_edges g elem = 
+  let stmt = get_stmt_vertex elem in
+  begin
+    match stmt.skind with
+    | If (e,b1,b2,loc) -> let tw1 = get_w elem b1.bstmts g in
+                          let tw2 = get_w elem b2.bstmts g in 
+                          let total_w = 1 + tw1 + tw2 in
+                          let fi = get_fi_vertex b1.bstmts b2.bstmts in 
+                          let edge = E.create elem total_w fi in
+                          G.add_edge_e g edge
+    | _ -> raise (Invalid_argument "Vertex not a conditional vertex in cond_vertex_list")
+  end
+
 let slice g vcgen_list = 
   let first_stmt = (List.hd vcgen_list).statement in
   let last_stmt = (List.hd (List.rev vcgen_list)).statement in
   let first_vertex = get_vertex first_stmt.sid in 
   let last_vertex = get_vertex last_stmt.sid in
+  List.iter(fun x -> add_conditional_edges g x ) !cond_vertex;
   let (p,tw) = Dij.shortest_path g first_vertex last_vertex in 
   build_path p 
 

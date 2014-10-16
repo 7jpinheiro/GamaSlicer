@@ -24,13 +24,13 @@ let computeCfg () =
      let vcgen_results = calculus Wp in
      let vcl = removeReturnStatement vcgen_results in
      let slice_g = Slicegraph.create_slice_graph vcl in 
-     (*let slicing_results = slicing Post_slicing  vcl [Alt_ergo;CVC3;CVC4;Yices] in
+     let slicing_results = slicing Post_slicing  vcl [Alt_ergo;CVC3;CVC4;Yices] in
      let n_slice_g = Slicegraph.add_sliced_edges slicing_results slice_g in 
      let sliced_path = Slicegraph.slice n_slice_g vcl in
      print_slice_results slicing_results;
      List.iter(fun x -> print_statement x.statement) vcl;
-     print_path sliced_path *)
      print_vertex slice_g;
-     print_edges slice_g
+     print_edges slice_g;
+     print_path sliced_path
 
 let () = Db.Main.extend run     

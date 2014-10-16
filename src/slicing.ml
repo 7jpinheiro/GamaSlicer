@@ -27,6 +27,7 @@ let my_head l =
   match l with
   | [] -> []
   | x::y -> x
+  
 
 
 let is_not_simple_type vcgen_result =
