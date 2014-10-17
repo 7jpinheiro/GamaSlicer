@@ -8,5 +8,9 @@ void g(int y,int x){
 			x = x-150;
 			x = x+100;
 			x = x+100;
-	}
+		}else {
+			x=x+200;
+		}
+	x=x+500;
+
 }

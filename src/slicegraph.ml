@@ -111,7 +111,6 @@ let add_sliced_edges slices_results g =
   List.iter(fun x -> G.add_edge_e g (create_sliced_edge x)) valid_results;
   g
 
-
 let rec build_path edges_list  =
   match edges_list with
   | [] -> []

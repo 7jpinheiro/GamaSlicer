@@ -21,7 +21,7 @@ let computeCfg () =
      let c_file = Ast.get () in
      Cfg.clearFileCFG c_file;
      computeCfg ();
-     let vcgen_results = calculus Wp in
+     let vcgen_results = calculus Sp in
      let vcl = removeReturnStatement vcgen_results in
      let slice_g = Slicegraph.create_slice_graph vcl in 
      let slicing_results = slicing Post_slicing  vcl [Alt_ergo;CVC3;CVC4;Yices] in
@@ -32,5 +32,5 @@ let computeCfg () =
      print_vertex slice_g;
      print_edges slice_g;
      print_path sliced_path
-
+     
 let () = Db.Main.extend run     

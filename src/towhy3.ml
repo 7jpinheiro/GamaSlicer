@@ -72,7 +72,7 @@ let rec getToBound toBound = function
 
 let bound_vars term =
    let varToBound = getToBound [] term in
-   let newFormula = Term.t_forall_close varToBound [] term in
+   let newFormula = Term.t_exists_close_simp varToBound [] term in
    newFormula
 
 let const2why lc = 
@@ -214,9 +214,9 @@ let rec pred2why predicate =
   | Pif (tif1,pif1,pif2)      -> Term.t_if (bound_vars(term2why tif1)) (pred2why pif1) (pred2why pif2)
   | Prel (rlt,trl1,trl2)      -> rel2why rlt trl1 trl2
   | Pforall (fallvar,fall_p)  -> let f_l = List.map create_lvar fallvar in
-                                 Term.t_forall_close f_l [] (pred2why fall_p)
+                                 Term.t_forall_close_simp f_l [] (pred2why fall_p)
   | Pexists (exvar,ex_p)      -> let e_l = List.map create_lvar exvar in
-                                 Term.t_exists_close e_l [] (pred2why ex_p)
+                                 Term.t_exists_close_simp e_l [] (pred2why ex_p)                              
   | Papp _                    -> raise (Invalid_argument "Logic predicate with type: Papp not yet implemented") 
   | Pseparated _              -> raise (Invalid_argument "Logic predicate with type: Pseparated not yet implemented")
   | Pxor _                    -> raise (Invalid_argument "Logic predicate with type: Pxor not yet implemented")

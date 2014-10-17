@@ -8,6 +8,7 @@ type vc_type =
 | Wp
 | Sp
 
+
 (* Datatype that stores the stmt proof obligation *)
 type po = 
 { 
@@ -28,7 +29,7 @@ and vcgen_type =
 | BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
 | LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
 
-
+let sp_aux = ref 0
 
 (* Gets option *)
 let get_opt = function
@@ -273,8 +274,9 @@ let replace_sp lval exp predicate  =
   let folded_exp = Cil.constFold false exp in 
   let exp_term = Logic_utils.expr_to_term ~cast:true folded_exp in
   let logic_var_list = get_lval_logic_vars lval in 
-  let llogic_var = List.hd logic_var_list in 
-  let q_logic_var = Cil_const.make_logic_var_quant "v" llogic_var.lv_type in 
+  let llogic_var = List.hd logic_var_list in
+  sp_aux := !sp_aux + 1;
+  let q_logic_var = Cil_const.make_logic_var_quant ("v"^(string_of_int !sp_aux)) llogic_var.lv_type in 
   let qtlvar = Logic_const.tvar q_logic_var in 
   let tlvar = Logic_const.tvar llogic_var in
     let var_name = get_var_name_from_lval lval in
@@ -300,7 +302,7 @@ let conditional_sp statement  vcgen_result_b1_list vcgen_result_b2_list =
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction_sp inst predicate = 
   match inst with
-  | Set (lval,exp,location) -> replace_sp lval exp predicate             (* Wp assigment rule *)
+  | Set (lval,exp,location) -> replace_sp lval exp predicate             (* Sp assigment rule *)
   | Call (lval_op,exp,exp_list,location) -> predicate
   | Skip location -> predicate 
   | Asm _ -> predicate
@@ -317,10 +319,41 @@ let bin2rel bin =
   | Ne -> Rneq
   | _ -> raise (Invalid_argument "Bin2rel: Only arithmetic comparison implemented\n")
 
-let binTerm2relPred term =
+let rec binTerm2relPred term =
   match term.term_node with
-  | TBinOp (bin,t1,t2) ->  Logic_const.unamed (Prel (bin2rel bin,t1,t2))
-  | _ -> raise (Invalid_argument "BinTerm2rel: Only Binary operations implemented\n")
+  | TBinOp (bin,t1,t2)        -> Logic_const.unamed (Prel (bin2rel bin,t1,t2))
+  | TCastE (ty1,cter1)        -> binTerm2relPred cter1
+  | TConst lc                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TConst not yet implemented")
+  | TLval tvar                -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TLval not yet implemented")
+  | TUnOp (unop,tnp1)         -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TUnOp not yet implemented")
+  | TLogic_coerce (ty,terl)   -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TLogic_coerce not yet implemented")
+  | Tat (tat1,ll1)            -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tat not yet implemented")
+  | TSizeOf _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TSizeOf not yet implemented")
+  | TSizeOfE _                -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TSizeOfE not yet implemented")
+  | TSizeOfStr _              -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TSizeOfStr not yet implemented")
+  | TAlignOf _                -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TAlignOf not yet implemented")
+  | TAlignOfE _               -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TAlignOfE not yet implemented")
+  | TAddrOf _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TAddrOf not yet implemented")
+  | TStartOf _                -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TStartOf not yet implemented")
+  | Tapp _                    -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tapp not yet implemented")
+  | Tlambda _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tlambda not yet implemented")
+  | TDataCons _               -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TDataCons not yet implemented")
+  | Tif _                     -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tif not yet implemented")
+  | Tbase_addr _              -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tbase_addr not yet implemented")
+  | Toffset _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Toffset not yet implemented")
+  | Tblock_length _           -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tblock_length not yet implemented")
+  | Tnull                     -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tnull not yet implemented")
+  | TCoerce (_,_)             -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TCoerce not yet implemented")
+  | TCoerceE (_,_)            -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TCoerce not yet implemented")
+  | TUpdate _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: TUpdate not yet implemented")
+  | Ttypeof _                 -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Ttypeof not yet implemented")
+  | Ttype _                   -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Ttype not yet implemented")
+  | Tempty_set                -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tempty_set not yet implemented")
+  | Tunion _                  -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tunion not yet implemented")
+  | Tinter _                  -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tinter not yet implemented")
+  | Tcomprehension _          -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tcomprehension not yet implemented")
+  | Trange _                  -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Trange not yet implemented")
+  | Tlet _                    -> raise (Invalid_argument "BinTerm2rel. Logic term with type: Tlet not yet implemented")
 
 (* Matches the statement with the definitions and replaces the predicate
  on the statement, generating a new predicate resulting from the replacement of wp *)
