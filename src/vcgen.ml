@@ -23,6 +23,8 @@ type vcgen_result =
 }(* Datatype that stores the type of statement, 
 each vcgen_result list comes from a block of that statement *)
 and vcgen_type =
+| StartS
+| EndS
 | SimpleS 															          (* The statement is SimpleS, if contains no block *)
 | IfS  of vcgen_result list * vcgen_result list 	(* The statement is Ifs, if contains a If with blocks *)
 | BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
@@ -31,8 +33,8 @@ and vcgen_type =
 
 type fun_dec = 
 {
-  mutable post_condition : Term.term;
-  mutable pre_condition : Term.term;
+  mutable end_stmt : stmt; 
+  mutable start_stmt : stmt;  
   mutable vcgen_result_sp : vcgen_result list;
   mutable vcgen_result_wp : vcgen_result list;
 }
@@ -50,6 +52,10 @@ let get_fun kf =
     Gs_options.Self.fatal "Kernel_function not found"
 
 let sp_aux = ref 0
+
+let start_stmt_sid = ref 0
+let end_stmt_sid = ref 0
+
 
 (* Gets option *)
 let get_opt = function
@@ -92,7 +98,7 @@ let build_vcgen_result_simple statement predicate  =
 		stype = SimpleS; 
 	}
 
-(*
+
 (* Builds vcgen_result with start type *)
 let build_vcgen_result_start statement predicate  =
   {
@@ -102,7 +108,7 @@ let build_vcgen_result_start statement predicate  =
     stype = StartS; 
   }
 
-  (* Builds vcgen_result with simple type *)
+  (* Builds vcgen_result with end type *)
 let build_vcgen_result_end statement predicate  =
   {
     statement = statement;
@@ -110,7 +116,7 @@ let build_vcgen_result_end statement predicate  =
     predicate = predicate;
     stype = EndS; 
   }
-*)
+
 
 (* Builds vcgen_result with Ifs type *)
 let build_vcgen_result_if statement predicate vcgen_result_list1 vcgen_result_list2  =
@@ -130,10 +136,10 @@ let build_vcgen_result_loop statement invariant vcgen_result_list   =
 		stype = LoopS vcgen_result_list ; 
 	}
 
-let build_fun_dec post_condition pre_condition vcg_wp vcg_sp =
+let build_fun_dec end_stmt start_stmt vcg_wp vcg_sp =
   {
-    post_condition = Towhy3.pred2why post_condition;
-    pre_condition =  Towhy3.pred2why pre_condition;
+    end_stmt = end_stmt;
+    start_stmt =  start_stmt;
     vcgen_result_wp = removeReturnStatement vcg_wp;
     vcgen_result_sp = removeReturnStatement vcg_sp; 
   }
@@ -447,10 +453,17 @@ let rec sequence_sp list_statements predicate =
 
 (* Genetares proof obligations, and returns a list with vcgen_result *)
 let vcgen_wp list_statements post_condt =
-  List.rev (sequence_wp (List.rev list_statements) post_condt)
+  let end_stmt = Cil.mkEmptyStmt ~ghost:true ~valid_sid:true () in
+  end_stmt_sid := end_stmt.sid;
+  let vc_wp = List.rev (sequence_wp (List.rev list_statements) post_condt) in
+  ((vc_wp @ [build_vcgen_result_end end_stmt post_condt]),end_stmt)
 
 let vcgen_sp list_statements pre_condt  =
-  sequence_sp list_statements pre_condt
+  let start_stmt = Cil.mkEmptyStmt ~ghost:true ~valid_sid:true () in
+  start_stmt_sid := start_stmt.sid;
+  let vc_sp = sequence_sp list_statements pre_condt in
+  (([build_vcgen_result_start start_stmt pre_condt] @ vc_sp),start_stmt)
+
 
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
@@ -481,9 +494,9 @@ let apply_if_defition def kf =
         let pre_condt = get_PreCondtion funbehavior in 
         let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
-        let vc_list_wp = vcgen_wp list_statements post_condt in
-        let vc_list_sp = vcgen_sp list_statements pre_condt  in
-        let fun_dec = build_fun_dec  post_condt pre_condt vc_list_wp vc_list_sp in
+        let (vc_list_wp,end_stmt) = vcgen_wp list_statements post_condt in
+        let (vc_list_sp,start_stmt) = vcgen_sp list_statements pre_condt  in
+        let fun_dec = build_fun_dec end_stmt start_stmt vc_list_wp vc_list_sp in
         add_fun kf fun_dec 
 	|false -> ()
 

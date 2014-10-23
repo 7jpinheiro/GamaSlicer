@@ -29,7 +29,6 @@ let my_head l =
   | x::y -> x
   
 
-
 let is_not_simple_type vcgen_result =
   match vcgen_result.stype with
   | SimpleS -> false
@@ -80,6 +79,8 @@ let rec apply_and_remove slice_fun slicing_type elem vcgen_results provers_list 
 
 and statement_kind func slice_fun elem vcgen_results provers_list slicing_type =
   match elem.stype with
+  | StartS -> func slicing_type elem vcgen_results provers_list
+  | EndS -> []
   | SimpleS -> func slicing_type elem vcgen_results provers_list
   | IfS (vcl1,vcl2) -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vcl1 provers_list) @ (apply_kind slice_fun slicing_type vcl2 provers_list)
   | BlockS vclb -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vclb provers_list) 
