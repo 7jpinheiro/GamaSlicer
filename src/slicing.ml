@@ -56,35 +56,35 @@ let rec isValid prover_result =
   | [] -> false
   | x::t -> if ((String.compare x.result "Valid")=0) then true else isValid t
 
-let rec apply_slicing elem vcgen_results provers_list =
+let rec apply_slicing slicing_type elem vcgen_results provers_list =
   match vcgen_results with
   | [] -> []
   | h :: t -> 
         let formula = build_imp elem h in
         let prl = List.map (fun prov -> send_to_prover formula prov) provers_list in 
-        (build_slicing_result elem.statement h.statement formula prl Post_slicing) :: (apply_slicing elem t provers_list)
+        (build_slicing_result elem.statement h.statement formula prl slicing_type) :: (apply_slicing slicing_type elem t provers_list)
 
 
-let rec apply_and_remove slicing_type elem vcgen_results provers_list  =
+let rec apply_and_remove slice_fun slicing_type elem vcgen_results provers_list  =
   match vcgen_results with
-  | [] -> if (is_not_simple_type elem) then (statement_kind apply_slicing elem vcgen_results provers_list slicing_type) else []
-  | h :: t -> (statement_kind apply_slicing elem vcgen_results provers_list slicing_type) @ (apply_and_remove slicing_type h t provers_list)
+  | [] -> if (is_not_simple_type elem) then (statement_kind apply_slicing slice_fun elem vcgen_results provers_list slicing_type) else []
+  | h :: t -> (statement_kind apply_slicing slice_fun elem vcgen_results provers_list slicing_type) @ (apply_and_remove slice_fun slicing_type h t provers_list)
 
-and statement_kind func elem vcgen_results provers_list slicing_type =
+and statement_kind func slice_fun elem vcgen_results provers_list slicing_type =
   match elem.stype with
-  | SimpleS -> func elem vcgen_results provers_list
-  | IfS (vcl1,vcl2) -> (func elem vcgen_results provers_list) @ (apply_kind slicing_type vcl1 provers_list) @ (apply_kind slicing_type vcl2 provers_list)
-  | BlockS vclb -> (func elem vcgen_results provers_list) @ (apply_kind slicing_type vclb provers_list) 
-  | LoopS vcll -> (func elem vcgen_results provers_list) @ (apply_kind slicing_type vcll provers_list) 
+  | SimpleS -> func slicing_type elem vcgen_results provers_list
+  | IfS (vcl1,vcl2) -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vcl1 provers_list) @ (apply_kind slice_fun slicing_type vcl2 provers_list)
+  | BlockS vclb -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vclb provers_list) 
+  | LoopS vcll -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vcll provers_list) 
 
-and apply_kind slice_type vcgen_results provers_list = 
+and apply_kind slice_fun slice_type vcgen_results provers_list = 
   match vcgen_results with
   | [] -> []
-  | x::t -> slicing slice_type vcgen_results provers_list
+  | x::t -> slice_fun slice_type vcgen_results provers_list
 
 and slicing slice_type vcgen_results provers_list = 
   match slice_type with
-  | Post_slicing -> apply_and_remove Post_slicing (List.hd vcgen_results) (my_tail vcgen_results) provers_list 
-  | Prec_slicing -> raise (Invalid_argument "Precondition-based slicing not yet implemented")
+  | Post_slicing -> apply_and_remove slicing Post_slicing (List.hd vcgen_results) (my_tail vcgen_results) provers_list 
+  | Prec_slicing -> apply_and_remove slicing Prec_slicing (List.hd vcgen_results) (my_tail vcgen_results) provers_list 
   | Spec_slicing -> raise (Invalid_argument "Specification-based slicing not yet implemented")
 

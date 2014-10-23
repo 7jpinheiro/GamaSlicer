@@ -8,7 +8,6 @@ type vc_type =
 | Wp
 | Sp
 
-
 (* Datatype that stores the stmt proof obligation *)
 type po = 
 { 
@@ -24,10 +23,31 @@ type vcgen_result =
 }(* Datatype that stores the type of statement, 
 each vcgen_result list comes from a block of that statement *)
 and vcgen_type =
-| SimpleS 															         (* The statement is SimpleS, if contains no block *)
-| IfS  of vcgen_result list * vcgen_result list 					(* The statement is Ifs, if contains a If with blocks *)
+| SimpleS 															          (* The statement is SimpleS, if contains no block *)
+| IfS  of vcgen_result list * vcgen_result list 	(* The statement is Ifs, if contains a If with blocks *)
 | BlockS of vcgen_result list 										(* The statement is BlocS, if is a Block  *)
 | LoopS  of vcgen_result list 										(* The statement is LoopS, if contains a Loop with one block *)
+
+
+type fun_dec = 
+{
+  mutable post_condition : Term.term;
+  mutable pre_condition : Term.term;
+  mutable vcgen_result_sp : vcgen_result list;
+  mutable vcgen_result_wp : vcgen_result list;
+}
+
+
+let fun_hash = Hashtbl.create 257
+
+let add_fun kf fun_dec =
+  Hashtbl.add fun_hash kf fun_dec
+
+let get_fun kf =
+  try
+    Hashtbl.find fun_hash kf
+  with Not_found ->
+    Gs_options.Self.fatal "Kernel_function not found"
 
 let sp_aux = ref 0
 
@@ -41,7 +61,6 @@ let get_opt = function
 let gen_po predicate = {
   proof_obligation = 
     try
-      Options.Self.result "Converting %a to Why3...\n" pp_predicate_named predicate;
       Towhy3.pred2why predicate 
     with
     | Not_found -> Options.Self.fatal "lsymbol not found"
@@ -51,7 +70,18 @@ let gen_po predicate = {
                     Options.Self.result"Ty1 == ty2: %b\n" equal; 
                     Options.Self.fatal" END ERROR REPORT\n "
 }
-  
+
+let isReturnStmt stmtkind =
+  match stmtkind with
+  | Return (_,_) -> true
+  | _ -> false
+
+
+let filterReturn vcgen_result =
+   if (isReturnStmt vcgen_result.statement.skind) then false else true 
+
+let removeReturnStatement vcgen_results = 
+  List.filter filterReturn vcgen_results 
 
 (* Builds vcgen_result with simple type *)
 let build_vcgen_result_simple statement predicate  =
@@ -61,6 +91,26 @@ let build_vcgen_result_simple statement predicate  =
 		predicate = predicate;
 		stype = SimpleS; 
 	}
+
+(*
+(* Builds vcgen_result with start type *)
+let build_vcgen_result_start statement predicate  =
+  {
+    statement = statement;
+    po =  gen_po predicate;
+    predicate = predicate;
+    stype = StartS; 
+  }
+
+  (* Builds vcgen_result with simple type *)
+let build_vcgen_result_end statement predicate  =
+  {
+    statement = statement;
+    po =  gen_po predicate;
+    predicate = predicate;
+    stype = EndS; 
+  }
+*)
 
 (* Builds vcgen_result with Ifs type *)
 let build_vcgen_result_if statement predicate vcgen_result_list1 vcgen_result_list2  =
@@ -80,16 +130,16 @@ let build_vcgen_result_loop statement invariant vcgen_result_list   =
 		stype = LoopS vcgen_result_list ; 
 	}
 
+let build_fun_dec post_condition pre_condition vcg_wp vcg_sp =
+  {
+    post_condition = Towhy3.pred2why post_condition;
+    pre_condition =  Towhy3.pred2why pre_condition;
+    vcgen_result_wp = removeReturnStatement vcg_wp;
+    vcgen_result_sp = removeReturnStatement vcg_sp; 
+  }
+
 let get_po vcgen_result = 
     vcgen_result.po.proof_obligation
-
-
-let isReturnStmt stmtkind =
-  match stmtkind with
-  | Return (_,_) -> true
-  | _ -> false
-
-
 
 (* Gets a list of logic_vars acording to the type of parameter e and the function *)
 let get_logic_vars e func = 
@@ -159,12 +209,6 @@ let build_invariant cod_annot_list predicate =
 	 		else acc
 	) cod_annot_list predicate
 
-
-let filterReturn vcgen_result =
-   if (isReturnStmt vcgen_result.statement.skind) then false else true 
-
-let removeReturnStatement vcgen_results = 
-  List.filter filterReturn vcgen_results 
 
 (* Visitor that visits a predicate, when it finds a term that contains the logic_var, it replaces it the expression term *)
 class replace_term prj  exprterm var_name = object 
@@ -414,17 +458,17 @@ let get_list_of_statements fundec =
   list_statements
 
 (* Get postcondition depeding ond the func_bulidcondtion input *)
-let get_PostCondtion  funbehavior  =
+let get_PostCondtion funbehavior  =
 	let post_condition =  Ast_info.behavior_postcondition (get_opt funbehavior) Normal in
 	post_condition 
 
 (* Get postcondition depeding ond the func_bulidcondtion input *)
-let get_PreCondtion  funbehavior  =
+let get_PreCondtion funbehavior  =
   let pre_condition =  Ast_info.behavior_precondition (get_opt funbehavior) in
   pre_condition 
 
 (* Visits and applys if there kf has definition *)
-let apply_if_defition vc_type def kf =
+let apply_if_defition def kf =
 	match def with
 	|true ->
 	     	let fundec = Kernel_function.get_definition kf in
@@ -436,16 +480,18 @@ let apply_if_defition vc_type def kf =
         let pre_condt = get_PreCondtion funbehavior in 
         let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
-        let vc_list = vcgen vc_type list_statements pre_condt post_condt in
-        vc_list
-	|false -> []
+        let vc_list_wp = vcgen Wp list_statements pre_condt post_condt in
+        let vc_list_sp = vcgen Wp list_statements pre_condt post_condt in
+        let fun_dec = build_fun_dec  post_condt pre_condt  vc_list_wp vc_list_sp in
+        add_fun kf fun_dec 
+	|false -> ()
 
 
-let calculus vc_type =
+let calculus () =
   Options.Self.result "Visting functions.\n";
-  Globals.Functions.fold
+  Globals.Functions.iter
   (
-      fun kf acc -> (apply_if_defition vc_type (Kernel_function.is_definition kf) kf) @ acc
-  ) []
+    fun kf -> (apply_if_defition (Kernel_function.is_definition kf) kf)
+  ) 
 
 

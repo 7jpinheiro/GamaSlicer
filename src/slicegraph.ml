@@ -97,6 +97,14 @@ let add_vertex_and_edges x g =
 let create_slice_graph vcgen_list =
   let g = G.create () in
   List.iter(fun x -> add_vertex_and_edges x g) vcgen_list;
+  let start_stmt = get_or_create (List.hd vcgen_list ).statement in
+  let end_stmt = get_or_create (List.hd (List.rev vcgen_list)).statement  in
+  let succ_stmt = get_or_create (List.hd (List.tl vcgen_list)).statement  in
+  let pre_stmt = get_or_create (List.hd (List.tl (List.rev vcgen_list))).statement  in
+  let start2succ_edge = E.create start_stmt 1 succ_stmt in
+  let pre2end_edge = E.create pre_stmt 1 end_stmt in 
+  G.add_edge_e g start2succ_edge;
+  G.add_edge_e g pre2end_edge;
   g
 
 let create_sliced_edge slice_result =
