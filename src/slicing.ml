@@ -35,11 +35,19 @@ let is_not_simple_type vcgen_result =
   | SimpleS -> false
   | _ -> true
 
-let build_imp elem1 elem2 = 
+let build_imp slicing_type elem1 elem2 =
+ let func = 
+   begin
+     match slicing_type with
+      |Post_slicing -> Term.t_forall_close_simp
+      |Prec_slicing -> Term.t_exists_close_simp
+      |Spec_slicing -> Term.t_forall_close_simp
+   end
+  in
   let po1 = get_po elem1 in
   let po2 = get_po elem2 in
   let form = Term.t_implies po1 po2 in
-  let b_form = Towhy3.bound_vars form in
+  let b_form = Towhy3.bound_vars func form in
   b_form
 
 let build_slicing_result statement1 statement2 form prover_result slicing_type = 
@@ -60,7 +68,7 @@ let rec apply_slicing slicing_type elem vcgen_results provers_list =
   match vcgen_results with
   | [] -> []
   | h :: t -> 
-        let formula = build_imp elem h in
+        let formula = build_imp slicing_type elem h in
         let prl = List.map (fun prov -> send_to_prover formula prov) provers_list in 
         (build_slicing_result elem.statement h.statement formula prl slicing_type) :: (apply_slicing slicing_type elem t provers_list)
 
@@ -76,6 +84,7 @@ and statement_kind func slice_fun elem vcgen_results provers_list slicing_type =
   | IfS (vcl1,vcl2) -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vcl1 provers_list) @ (apply_kind slice_fun slicing_type vcl2 provers_list)
   | BlockS vclb -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vclb provers_list) 
   | LoopS vcll -> (func slicing_type elem vcgen_results provers_list) @ (apply_kind slice_fun slicing_type vcll provers_list) 
+
 
 and apply_kind slice_fun slice_type vcgen_results provers_list = 
   match vcgen_results with

@@ -70,9 +70,9 @@ let rec getToBound toBound = function
        | _ -> toBound
      end
 
-let bound_vars term =
+let bound_vars func term =
    let varToBound = getToBound [] term in
-   let newFormula = Term.t_exists_close_simp varToBound [] term in
+   let newFormula =  func varToBound [] term in
    newFormula
 
 let const2why lc = 
@@ -211,7 +211,7 @@ let rec pred2why predicate =
   | Por (por1,por2)           -> Term.t_or  (pred2why por1) (pred2why por2)
   | Pimplies (pim1,pim2)      -> Term.t_implies (pred2why pim1) (pred2why pim2)
   | Piff (piff1,piff2)        -> Term.t_iff (pred2why piff1) (pred2why piff2)
-  | Pif (tif1,pif1,pif2)      -> Term.t_if (bound_vars(term2why tif1)) (pred2why pif1) (pred2why pif2)
+  | Pif (tif1,pif1,pif2)      -> Term.t_if (bound_vars Term.t_forall_close_simp (term2why tif1)) (pred2why pif1) (pred2why pif2)
   | Prel (rlt,trl1,trl2)      -> rel2why rlt trl1 trl2
   | Pforall (fallvar,fall_p)  -> let f_l = List.map create_lvar fallvar in
                                  Term.t_forall_close_simp f_l [] (pred2why fall_p)
