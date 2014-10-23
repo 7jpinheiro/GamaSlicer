@@ -446,10 +446,11 @@ let rec sequence_sp list_statements predicate =
     vcgen_result::(sequence_sp stail vcgen_result.predicate)
 
 (* Genetares proof obligations, and returns a list with vcgen_result *)
-let vcgen vc_type list_statements pre_condt post_condt =
-  match vc_type with
-	| Wp -> List.rev (sequence_wp (List.rev list_statements) post_condt)
-  | Sp -> sequence_sp list_statements pre_condt
+let vcgen_wp list_statements post_condt =
+  List.rev (sequence_wp (List.rev list_statements) post_condt)
+
+let vcgen_sp list_statements pre_condt  =
+  sequence_sp list_statements pre_condt
 
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
@@ -480,9 +481,9 @@ let apply_if_defition def kf =
         let pre_condt = get_PreCondtion funbehavior in 
         let post_condt = get_PostCondtion funbehavior in
         let list_statements = get_list_of_statements fundec in
-        let vc_list_wp = vcgen Wp list_statements pre_condt post_condt in
-        let vc_list_sp = vcgen Wp list_statements pre_condt post_condt in
-        let fun_dec = build_fun_dec  post_condt pre_condt  vc_list_wp vc_list_sp in
+        let vc_list_wp = vcgen_wp list_statements post_condt in
+        let vc_list_sp = vcgen_sp list_statements pre_condt  in
+        let fun_dec = build_fun_dec  post_condt pre_condt vc_list_wp vc_list_sp in
         add_fun kf fun_dec 
 	|false -> ()
 
