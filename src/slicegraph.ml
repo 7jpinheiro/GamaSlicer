@@ -6,7 +6,6 @@ open Provers
 open Slicing
 open Graph
 
-
 module Node = struct
 	type t = stmt
 	let compare n1 n2 = compare n1.sid n2.sid
@@ -123,14 +122,15 @@ let create_slice_graph start_stmt end_stmt vcgen_list =
 
 
 let create_edges g vertex slice_result end_stmt =
-let edges =  
-   if (slice_result.stmt_2.sid <> !end_stmt_sid ) then
+  let edges =  
+     if (slice_result.stmt_2.sid <> !end_stmt_sid ) then
        List.fold_right
               ( 
                 fun stmt acc -> let vertex_succ = get_or_create stmt in 
                 (E.create vertex 1 vertex_succ) :: acc  
               ) slice_result.stmt_2.succs []
-   else 
+             
+    else 
        let end_vertex = get_or_create end_stmt in
        [E.create vertex 1 end_vertex]
 in
@@ -141,13 +141,10 @@ let create_sliced_edge_post g slice_result start_stmt end_stmt =
     if (is_empty (slice_result.stmt_1.preds)) then
        [get_or_create start_stmt]
      else 
-       List.fold_right (fun x acc -> get_or_create x :: acc) slice_result.stmt_1.preds []
+       (List.fold_right (fun x acc -> get_or_create x :: acc) slice_result.stmt_1.preds [])
   in
   List.iter (fun x -> create_edges g x slice_result end_stmt ) vertex_list   
 
-
-
-let create_sliced_edge_prec g slice_result start_stmt end_stmt =
 
 let create_sliced_edge g slice_result start_stmt end_stmt =
   match slice_result.slicing_type with
