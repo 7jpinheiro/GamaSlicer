@@ -41,10 +41,6 @@ let is_empty l =
   |x::y -> false
 
 
-let first_vertex = ref (G.V.create Cil.dummyStmt)
-
-let last_vertex = ref (G.V.create Cil.dummyStmt)
-
 let vertex_hash = Hashtbl.create 257
 
 let getKey v =
@@ -78,7 +74,6 @@ let isCondtional vcgen =
   | IfS (vcl1,vcl2) -> true
   | _ -> false
 
-
 let isnotStart vcgen =
   match vcgen.stype with
   | StartS -> false
@@ -89,47 +84,71 @@ let isnotEnd vcgen =
   | EndS -> false
   | _ -> true
 
-let add_vertex_and_edges x g end_stmt =
+
+let add_start_stmt g vertex start_stmt flag =
+  match flag with
+  | true -> 
+    let edge2 = E.create (get_or_create start_stmt) 1 vertex in
+    G.add_edge_e g edge2
+  | false -> ()
+
+let add_vertex_and_edges x g start_stmt end_stmt =
     let x_vertex = get_or_create x.statement in
     if (isCondtional x) then cond_vertex := x_vertex :: !cond_vertex;
     let stmt_succs = x.statement.succs in
-    let x_edges = 
-              if (is_empty stmt_succs) 
-              then 
-               List.map(
-                         fun succ -> 
-                                     let succ_vertex = get_or_create succ in 
-                                     let edge = E.create x_vertex 1 succ_vertex in 
-                                      edge
-                        ) stmt_succs 
-               else let succ_vertex = get_or_create end_stmt in
-                    let edge = E.create x_vertex 1 succ_vertex in 
-                      [edge]
-    in                  
+    let stmt_preds = x.statement.preds in
     G.add_vertex g x_vertex;
-    List.iter(fun edge -> G.add_edge_e g edge) x_edges
+    add_start_stmt g x_vertex start_stmt (is_empty stmt_preds);
+    let succs_edges = 
+                  List.map(
+                           fun succ ->
+                                     let succ_vertex = 
+                                     begin
+                                        if (isReturnStmt succ.skind) 
+                                                       then get_or_create end_stmt
+                                                       else get_or_create succ 
+                                     end
+                                     in 
+                                     let edge = E.create x_vertex 1 succ_vertex in 
+                                     edge
+                         ) stmt_succs 
+    in                  
+    List.iter(fun edge -> G.add_edge_e g edge) succs_edges
 
 let create_slice_graph start_stmt end_stmt vcgen_list =
   let g = G.create () in
-  List.iter(fun x -> add_vertex_and_edges x g end_stmt) vcgen_list;
   let l  = List.filter isnotStart vcgen_list in
-  let start_v = get_or_create start_stmt in
-  let vcgen_s = (List.hd l) in 
-  let succ_stmt = get_or_create vcgen_s.statement  in
-  let start2succ_edge = E.create start_v 1 succ_stmt in
-  G.add_edge_e g start2succ_edge;
+  let fl = List.filter isnotEnd l in 
+  G.add_vertex g (get_or_create start_stmt);
+  G.add_vertex g (get_or_create end_stmt);
+  List.iter(fun x -> add_vertex_and_edges x g start_stmt end_stmt) fl;
   g
 
-
-let create_edges g vertex slice_result end_stmt =
+let create_edges_prec g vertex slice_result end_stmt =
   let edges =  
      if (slice_result.stmt_2.sid <> !end_stmt_sid ) then
        List.fold_right
               ( 
-                fun stmt acc -> let vertex_succ = get_or_create stmt in 
-                (E.create vertex 1 vertex_succ) :: acc  
-              ) slice_result.stmt_2.succs []
-             
+                fun stmt acc -> let vertex_succ =
+                                begin
+                                    if (isReturnStmt stmt.skind) 
+                                                       then get_or_create end_stmt
+                                                       else get_or_create stmt 
+                                end
+                                in
+                                (E.create vertex 1 vertex_succ) :: acc  
+              ) slice_result.stmt_2.succs []             
+    else 
+       let end_vertex = get_or_create end_stmt in
+       [E.create vertex 1 end_vertex]
+in
+List.iter(fun x -> G.add_edge_e g x) edges
+
+let create_edges_post g vertex slice_result end_stmt =
+  let edges =  
+     if (slice_result.stmt_2.sid <> !end_stmt_sid ) then
+          let vertex_succ = get_or_create slice_result.stmt_2 in 
+          [E.create vertex 1 vertex_succ]        
     else 
        let end_vertex = get_or_create end_stmt in
        [E.create vertex 1 end_vertex]
@@ -143,15 +162,17 @@ let create_sliced_edge_post g slice_result start_stmt end_stmt =
      else 
        (List.fold_right (fun x acc -> get_or_create x :: acc) slice_result.stmt_1.preds [])
   in
-  List.iter (fun x -> create_edges g x slice_result end_stmt ) vertex_list   
+  List.iter (fun x -> create_edges_post g x slice_result end_stmt ) vertex_list   
 
+let create_sliced_edge_prec g slice_result start_stmt end_stmt = 
+ let vertex = get_or_create slice_result.stmt_1 in
+ create_edges_prec g vertex slice_result end_stmt
 
 let create_sliced_edge g slice_result start_stmt end_stmt =
   match slice_result.slicing_type with
   | Post_slicing -> create_sliced_edge_post g slice_result start_stmt end_stmt
-  | Prec_slicing -> raise (Invalid_argument "Not yet implemented Prec_slicing in create_sliced_edge")
+  | Prec_slicing -> create_sliced_edge_prec g slice_result start_stmt end_stmt
   | Spec_slicing -> raise (Invalid_argument "Not yet implemented Spec_slicing in create_sliced_edge")
-
 
 let add_sliced_edges start_stmt end_stmt slices_results g =
   let valid_results = List.filter (fun x -> (isValid x.prover_result)) slices_results in
@@ -163,8 +184,6 @@ let rec build_path edges_list  =
   | [] -> []
   | [e] -> [(G.E.src e)]@[(G.E.dst e)]
   | x::tail -> (G.E.src x)::(build_path tail)   
-
-
 
 let get_w elem b g = 
   match b with
@@ -205,8 +224,15 @@ let slice g first_stmt last_stmt vcgen_list =
   let first_vertex = get_or_create first_stmt in 
   let last_vertex = get_or_create last_stmt in
   List.iter(fun x -> add_conditional_edges g x ) !cond_vertex;
-  let (p,tw) = Dij.shortest_path g first_vertex last_vertex in 
-  build_path p 
+  Gs_options.Self.result "Calculating shortest slice path!";
+  try
+   let (p,tw) = Dij.shortest_path g first_vertex last_vertex in
+   build_path p 
+  with
+  | Not_found -> Gs_options.Self.fatal "Shortest slice path not found!"
+
+
+
 
 
 

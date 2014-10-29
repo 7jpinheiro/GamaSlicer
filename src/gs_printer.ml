@@ -60,12 +60,13 @@ let print_ss_postcondtion l =
 	 			  print_predicate y  
 	) l
 
+
+
 let print_prover_result prover_result =
   Gs_options.Self.result "Prover: %s\n " prover_result.name;
   Gs_options.Self.result "Validity: %s\n " prover_result.result;
   Gs_options.Self.result "Time: %f\n " prover_result.time
   
-	
 let print_slice_result result =
   print_statement result.stmt_1;
   print_statement result.stmt_2;
@@ -77,6 +78,11 @@ let print_slice_result result =
   ) result.prover_result
 
 
+let print_slice_result_simple result =
+  Gs_options.Self.result "%d -> %d\n" result.stmt_1.sid result.stmt_2.sid;
+  Gs_options.Self.result "****************** \n\n";           
+  print_prover_result (List.hd result.prover_result)
+
 let print_slice_results results =
    List.iter
   (
@@ -85,6 +91,15 @@ let print_slice_results results =
             Gs_options.Self.result "--------------------------\n\n"
   ) results
 
+
+
+let print_slice_results_simple results =
+   List.iter
+  (
+   fun x -> Gs_options.Self.result "--------------------------\n\n";
+            print_slice_result_simple x;
+            Gs_options.Self.result "--------------------------\n\n"
+  ) results
 
 let print_vertex g =
     G.iter_vertex( 

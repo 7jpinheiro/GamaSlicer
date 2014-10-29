@@ -46,28 +46,29 @@ let slice_fun vc_type fun_dec provers_list =
             match vc_type with
             | Post_slicing -> 
                             let slice_g = Slicegraph.create_slice_graph start_stmt end_stmt  vcg_wp in 
+                            print_vertex slice_g;
+                            print_edges slice_g;
                             let slicing_results = slicing vc_type vcg_wp provers_list in
                             print_slice_results slicing_results;
                             let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in 
-                            print_vertex slice_g;
-                            print_edges slice_g;
                             let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt vcg_wp in
                             List.iter(fun x -> print_why3_term x.po.proof_obligation) vcg_wp;
-                         
                             print_vertex slice_g;
-                            print_edges slice_g;
-                            sliced_path
+                            print_edges slice_g; 
+                            sliced_path 
             | Prec_slicing ->
-                            let slice_g = Slicegraph.create_slice_graph start_stmt end_stmt  vcg_sp in 
+                            let slice_g = Slicegraph.create_slice_graph start_stmt end_stmt vcg_sp in
+                           (*) print_vertex slice_g;
+                            print_edges slice_g; *)
                             let slicing_results = slicing vc_type vcg_sp provers_list in
                             let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in
                             let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt vcg_sp in
-                            List.iter(fun x -> print_why3_term x.po.proof_obligation) vcg_wp;
-                            print_slice_results slicing_results;
+                            List.iter(fun x -> print_why3_term x.po.proof_obligation) vcg_sp;
+                            print_slice_results_simple slicing_results;
                             print_vertex slice_g;
                             print_edges slice_g;
                             sliced_path
-             | Spec_slicing -> raise (Invalid_argument "Not yet implemented")
+            | Spec_slicing -> raise (Invalid_argument "Not yet implemented")
     end
     in
     print_path sliced_path

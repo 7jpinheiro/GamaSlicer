@@ -468,7 +468,7 @@ let vcgen_sp list_statements pre_condt  =
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
 	Options.Self.result "Getting list of statements.\n";
-	let list_statements = fundec.sallstmts in
+	let list_statements = fundec.sbody.bstmts in
   list_statements
 
 (* Get postcondition depeding ond the func_bulidcondtion input *)
