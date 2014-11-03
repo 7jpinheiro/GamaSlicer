@@ -126,3 +126,19 @@ let print_path edges_list =
            ) edges_list
 
 
+let print_type vcgen = 
+ match vcgen.stype with 
+| StartS -> Gs_options.Self.result "Stype: StartS"  
+| EndS -> Gs_options.Self.result "Stype: EndS" 
+| SimpleS -> Gs_options.Self.result "Stype: SimpleS"                                     (* The statement is SimpleS, if contains no block *)
+| IfS  (_,_) -> Gs_options.Self.result "Stype: IfS"      (* The statement is Ifs, if contains a If with blocks *)
+| BlockS _ -> Gs_options.Self.result "Stype: BlockS"    
+| LoopS _ -> Gs_options.Self.result "Stype: LoopS"   
+
+
+let print_vcgen l =
+    List.iter(
+            fun x ->   Gs_options.Self.result "--------------------------\n\n";
+                     print_statement x.statement;
+                     print_type x
+           ) l

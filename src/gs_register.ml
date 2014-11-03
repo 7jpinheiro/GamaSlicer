@@ -41,6 +41,7 @@ let slice_fun vc_type fun_dec provers_list =
     let start_stmt = fun_dec.start_stmt in
     let vcg_wp = fun_dec.vcgen_result_wp in
     let vcg_sp = fun_dec.vcgen_result_sp in
+    print_vcgen vcg_sp;
     let sliced_path = 
          begin
             match vc_type with
@@ -51,7 +52,7 @@ let slice_fun vc_type fun_dec provers_list =
                             let slicing_results = slicing vc_type vcg_wp provers_list in
                             print_slice_results slicing_results;
                             let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in 
-                            let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt vcg_wp in
+                            let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt  in
                             List.iter(fun x -> print_why3_term x.po.proof_obligation) vcg_wp;
                             print_vertex slice_g;
                             print_edges slice_g; 
@@ -62,15 +63,26 @@ let slice_fun vc_type fun_dec provers_list =
                             print_edges slice_g; *)
                             let slicing_results = slicing vc_type vcg_sp provers_list in
                             let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in
-                            let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt vcg_sp in
+                            let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt  in
                             List.iter(fun x -> print_why3_term x.po.proof_obligation) vcg_sp;
                             print_slice_results_simple slicing_results;
                             print_vertex slice_g;
                             print_edges slice_g;
                             sliced_path
-            | Spec_slicing -> raise (Invalid_argument "Not yet implemented")
+            | Spec_slicing ->
+                             let slice_g = Slicegraph.create_slice_graph start_stmt end_stmt vcg_wp in
+                             print_vertex slice_g;
+                             print_edges slice_g;
+                             let slicing_results = slicing2 vc_type vcg_sp vcg_wp provers_list in
+                             print_slice_results slicing_results;
+                             let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in
+                             let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt in
+                              print_vertex slice_g;
+                            print_edges slice_g;
+                             sliced_path 
     end
     in
+
     print_path sliced_path
 
 

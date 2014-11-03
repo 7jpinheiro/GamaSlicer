@@ -136,6 +136,16 @@ let build_vcgen_result_loop statement invariant vcgen_result_list   =
 		stype = LoopS vcgen_result_list ; 
 	}
 
+
+(* Builds vcgen_result with WhileS type *)
+let build_vcgen_result_block statement predicate vcgen_result_list   =
+  {
+    statement = statement;
+    po =  gen_po predicate;
+    predicate = predicate;
+    stype = BlockS vcgen_result_list ; 
+  }
+
 let build_fun_dec end_stmt start_stmt vcg_wp vcg_sp =
   {
     end_stmt = end_stmt;
@@ -245,7 +255,7 @@ let ifVcgenResultIsEmpty vcgen_result_list =
 	match vcgen_result_list with
 	| [] -> Logic_const.ptrue
 	| l  -> 
-		let last_vcgen_result = List.hd (List.rev l) in
+		let last_vcgen_result = List.hd l in
 		last_vcgen_result.predicate
 
 (* Replaces the predicate  *)
@@ -269,12 +279,28 @@ let replace_instruction_wp inst predicate =
   | Asm _ -> predicate
   | Code_annot _ -> predicate
 
+let get_succ_statement vcgen_result_list =
+    match vcgen_result_list with
+    | [] -> ([],Logic_const.pfalse)
+    | l  -> 
+    let last_vcgen_result = List.hd l in
+    let succs = last_vcgen_result.statement.succs in
+    let suc_p = last_vcgen_result.predicate in 
+    (succs,suc_p)
+
+
 (* Conditional wp rule, with sequence rule already aplied to the two blocks*)
 let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_result_b2_list =
  	let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
  	let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
  	let new_predicate = Logic_const.pif (exp_term, newpredicateb1, newpredicateb2) in
-	build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
+  let (succ_statements1,p1) = get_succ_statement (List.rev vcgen_result_b1_list) in
+  let (succ_statements2,p2) = get_succ_statement (List.rev vcgen_result_b2_list) in
+  (*let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in
+  let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in*)
+  let succs1 = [build_vcgen_result_simple statement p1] in
+  let succs2 = [build_vcgen_result_simple statement p2] in
+	build_vcgen_result_if statement new_predicate  (vcgen_result_b1_list @ succs1) (vcgen_result_b2_list @ succs2)
 
 
 (* Matches the statement with the definitions and replaces the predicate
@@ -296,15 +322,17 @@ let rec replace_statement_wp statement predicate =
  			let logic_e = Logic_utils.expr_to_term ~cast:true e in
  			let vcgen_result_b1_list = sequence (List.rev b1.bstmts) predicate replace_statement_wp in
  			let vcgen_result_b2_list = sequence (List.rev b2.bstmts) predicate replace_statement_wp in
- 			conditional_wp statement logic_e predicate vcgen_result_b1_list vcgen_result_b2_list
+ 			conditional_wp statement logic_e predicate (List.rev vcgen_result_b1_list) (List.rev vcgen_result_b2_list)
  	| Switch (e,_,_,_) ->
  			build_vcgen_result_simple statement  predicate 
  	| Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
  			let invariant = build_invariant ca_list Logic_const.ptrue in
  			let vcgen_result_list = sequence (List.rev block.bstmts) predicate replace_statement_wp in
- 			build_vcgen_result_loop statement invariant vcgen_result_list
- 	| Block _ ->
- 			build_vcgen_result_simple statement  predicate 
+ 			build_vcgen_result_loop statement invariant  (List.rev vcgen_result_list)
+ 	| Block (bl) ->
+      let vcgen_result_bl_list = sequence (List.rev bl.bstmts) predicate replace_statement_wp in
+      let new_p = ifVcgenResultIsEmpty (List.rev vcgen_result_bl_list) in
+      build_vcgen_result_block statement new_p  (List.rev vcgen_result_bl_list)
  	| UnspecifiedSequence _ ->
  			build_vcgen_result_simple statement  predicate  
  	| TryFinally _ | TryExcept _ -> 
@@ -341,11 +369,11 @@ let replace_sp lval exp predicate  =
 
 
 (* Conditional sp rule, with sequence rule already aplied to the two blocks*)
-let conditional_sp statement  vcgen_result_b1_list vcgen_result_b2_list =
-  let newpredicateb1 = ifVcgenResultIsEmpty vcgen_result_b1_list in
-  let newpredicateb2 = ifVcgenResultIsEmpty vcgen_result_b2_list in
+let conditional_sp statement predicate vcgen_result_b1_list vcgen_result_b2_list =
+  let newpredicateb1 = ifVcgenResultIsEmpty (List.rev vcgen_result_b1_list) in
+  let newpredicateb2 = ifVcgenResultIsEmpty (List.rev vcgen_result_b2_list) in
   let new_predicate = Logic_const.por (newpredicateb1, newpredicateb2) in
-  build_vcgen_result_if statement new_predicate  vcgen_result_b1_list vcgen_result_b2_list
+  build_vcgen_result_if statement new_predicate ([build_vcgen_result_simple statement predicate] @ vcgen_result_b1_list) ([build_vcgen_result_simple statement predicate] @ vcgen_result_b2_list)
 
 
 (* Matches the instruction with the definitions and replaces the predicate
@@ -428,15 +456,17 @@ let rec replace_statement_sp statement predicate =
       let predicateb2 = Logic_const.pand (n_pred_logic_e,predicate) in  
       let vcgen_result_b1_list = sequence b1.bstmts predicateb1 replace_statement_sp in
       let vcgen_result_b2_list = sequence b2.bstmts predicateb2 replace_statement_sp in
-      conditional_sp statement vcgen_result_b1_list vcgen_result_b2_list
+      conditional_sp statement predicate vcgen_result_b1_list vcgen_result_b2_list
   | Switch (e,_,_,_) ->
       build_vcgen_result_simple statement  predicate 
   | Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
       let invariant = build_invariant ca_list Logic_const.ptrue in
-      let vcgen_result_list = sequence (List.rev block.bstmts) predicate replace_statement_sp in
+      let vcgen_result_list = sequence block.bstmts predicate replace_statement_sp in
       build_vcgen_result_loop statement invariant vcgen_result_list
-  | Block _ ->
-      build_vcgen_result_simple statement  predicate 
+  | Block (bl) ->
+      let vcgen_result_bl_list = sequence bl.bstmts predicate replace_statement_sp in
+      let new_p = ifVcgenResultIsEmpty vcgen_result_bl_list in
+      build_vcgen_result_block statement new_p vcgen_result_bl_list
   | UnspecifiedSequence _ ->
       build_vcgen_result_simple statement  predicate  
   | TryFinally _ | TryExcept _ -> 
@@ -463,7 +493,6 @@ let vcgen_sp list_statements pre_condt  =
   start_stmt_sid := start_stmt.sid;
   let vc_sp = sequence_sp list_statements pre_condt in
   (([build_vcgen_result_start start_stmt pre_condt] @ vc_sp),start_stmt)
-
 
 (* Returns a list of statements found in fundec.sallstmts after the computation of the cfg *)
 let get_list_of_statements fundec = 
@@ -499,7 +528,6 @@ let apply_if_defition def kf =
         let fun_dec = build_fun_dec end_stmt start_stmt vc_list_wp vc_list_sp in
         add_fun kf fun_dec 
 	|false -> ()
-
 
 let calculus () =
   Options.Self.result "Visting functions.\n";

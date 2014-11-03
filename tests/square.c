@@ -6,4 +6,4 @@ void f(int x){
 	x = x+100;
 	x = x+50;
 }
-	
+		
