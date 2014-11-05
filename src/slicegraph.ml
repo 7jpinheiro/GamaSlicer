@@ -84,6 +84,7 @@ let isnotEnd vcgen =
   | EndS -> false
   | _ -> true
 
+
 let add_start_stmt g vertex start_stmt flag =
   match flag with
   | true -> 
@@ -137,6 +138,7 @@ let create_slice_graph start_stmt end_stmt vcgen_list =
   g
 
 let create_edges_prec g vertex slice_result end_stmt =
+    Gs_options.Self.result "Adding sliced posted egdes!\n"; 
   let edges =  
      if (slice_result.stmt_2.sid <> !end_stmt_sid ) then
        List.fold_right
@@ -148,10 +150,13 @@ let create_edges_prec g vertex slice_result end_stmt =
                                                        else get_or_create stmt 
                                 end
                                 in
+Gs_options.Self.result "Adding a new egde: %d -> %d \n" (G.V.label vertex).sid (G.V.label vertex_succ).sid; 
+
                                 (E.create vertex 1 vertex_succ) :: acc  
               ) slice_result.stmt_2.succs []             
     else 
        let end_vertex = get_or_create end_stmt in
+       Gs_options.Self.result "Adding a new egde: %d -> %d \n" (G.V.label vertex).sid (G.V.label end_vertex).sid; 
        [E.create vertex 1 end_vertex]
 in
 List.iter(fun x -> G.add_edge_e g x) edges
@@ -218,14 +223,19 @@ let rec build_path edges_list  =
   | x::tail -> (G.E.src x)::(build_path tail)   
 
 let get_w elem b g = 
+      Gs_options.Self.result "Getting branch weight!";
   match b with
-  | [] -> 0 
+  | [] -> 0
   | x -> let v_b = List.map(fun x -> get_or_create x) b in
          let b_last_v = List.hd (List.rev v_b) in
-         let (p,tw) = Dij.shortest_path g elem b_last_v in
-         tw 
+         try
+          let (p,tw) = Dij.shortest_path g elem b_last_v in
+          tw 
+         with 
+         | Not_found -> Gs_options.Self.fatal "Shortest branch slice path not found!"
 
 let get_fi_vertex b1 b2 end_stmt =
+    Gs_options.Self.result "Getting fi vertex!";
 let fi =  
  begin
    match b1,b2 with 
@@ -246,6 +256,7 @@ let fi =
    else get_or_create fi 
 
 let add_conditional_edges g elem last_stmt = 
+  Gs_options.Self.result "Adding conditional edges!";
   let stmt = get_stmt_vertex elem in
   begin
     match stmt.skind with
@@ -259,10 +270,11 @@ let add_conditional_edges g elem last_stmt =
   end
 
 let slice g first_stmt last_stmt = 
+    Gs_options.Self.result "Calculating shortest slice path!";
   let first_vertex = get_or_create first_stmt in 
   let last_vertex = get_or_create last_stmt in
   List.iter(fun x -> add_conditional_edges g x last_stmt ) !cond_vertex;
-  Gs_options.Self.result "Calculating shortest slice path!";
+
   try
    let (p,tw) = Dij.shortest_path g first_vertex last_vertex in
    build_path p 

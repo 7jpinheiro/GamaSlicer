@@ -296,11 +296,11 @@ let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_resul
  	let new_predicate = Logic_const.pif (exp_term, newpredicateb1, newpredicateb2) in
   let (succ_statements1,p1) = get_succ_statement (List.rev vcgen_result_b1_list) in
   let (succ_statements2,p2) = get_succ_statement (List.rev vcgen_result_b2_list) in
-  (*let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in
-  let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in*)
-  let succs1 = [build_vcgen_result_simple statement p1] in
-  let succs2 = [build_vcgen_result_simple statement p2] in
-	build_vcgen_result_if statement new_predicate  (vcgen_result_b1_list @ succs1) (vcgen_result_b2_list @ succs2)
+  let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in
+  let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in
+  let inits1 = [build_vcgen_result_simple statement predicate] in
+  let inits2 = [build_vcgen_result_simple statement predicate] in
+	build_vcgen_result_if statement new_predicate  (inits1 @ vcgen_result_b1_list @ succs1) (inits2 @ vcgen_result_b2_list @ succs2)
 
 
 (* Matches the statement with the definitions and replaces the predicate
@@ -369,17 +369,21 @@ let replace_sp lval exp predicate  =
 
 
 (* Conditional sp rule, with sequence rule already aplied to the two blocks*)
-let conditional_sp statement predicate vcgen_result_b1_list vcgen_result_b2_list =
+let conditional_sp statement predicate predicateb1 predicateb2 vcgen_result_b1_list vcgen_result_b2_list =
   let newpredicateb1 = ifVcgenResultIsEmpty (List.rev vcgen_result_b1_list) in
   let newpredicateb2 = ifVcgenResultIsEmpty (List.rev vcgen_result_b2_list) in
   let new_predicate = Logic_const.por (newpredicateb1, newpredicateb2) in
-  build_vcgen_result_if statement new_predicate ([build_vcgen_result_simple statement predicate] @ vcgen_result_b1_list) ([build_vcgen_result_simple statement predicate] @ vcgen_result_b2_list)
+  let (succ_statements1,p1) = get_succ_statement (List.rev vcgen_result_b1_list) in
+  let (succ_statements2,p2) = get_succ_statement (List.rev vcgen_result_b2_list) in
+  let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in
+  let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in
+  build_vcgen_result_if statement new_predicate ([build_vcgen_result_simple statement predicate] @ vcgen_result_b1_list @ succs1) ([build_vcgen_result_simple statement predicate] @ vcgen_result_b2_list @ succs2)
 
 
 (* Matches the instruction with the definitions and replaces the predicate
  on the instruction, generating a new predicate resulting from the replacement *)
 let replace_instruction_sp inst predicate = 
-  match inst with
+  match inst with 
   | Set (lval,exp,location) -> replace_sp lval exp predicate             (* Sp assigment rule *)
   | Call (lval_op,exp,exp_list,location) -> predicate
   | Skip location -> predicate 
@@ -453,10 +457,12 @@ let rec replace_statement_sp statement predicate =
       let pred_logic_e = binTerm2relPred logic_e in 
       let n_pred_logic_e = Logic_const.pnot pred_logic_e in 
       let predicateb1 = Logic_const.pand (pred_logic_e,predicate) in
-      let predicateb2 = Logic_const.pand (n_pred_logic_e,predicate) in  
-      let vcgen_result_b1_list = sequence b1.bstmts predicateb1 replace_statement_sp in
-      let vcgen_result_b2_list = sequence b2.bstmts predicateb2 replace_statement_sp in
-      conditional_sp statement predicate vcgen_result_b1_list vcgen_result_b2_list
+      let predicateb2 = Logic_const.pand (n_pred_logic_e,predicate) in
+      let stmts1 = b1.bstmts in
+      let stmts2 = b1.bstmts in
+      let vcgen_result_b1_list = sequence stmts1 predicateb1 replace_statement_sp in
+      let vcgen_result_b2_list = sequence stmts2 predicateb2 replace_statement_sp in
+      conditional_sp statement predicate predicateb1 predicateb2 vcgen_result_b1_list vcgen_result_b2_list
   | Switch (e,_,_,_) ->
       build_vcgen_result_simple statement  predicate 
   | Loop (ca_list,block,loc,stmt_op1,stmt_op2) -> 
