@@ -33,7 +33,7 @@ let print_statement stmt =
   Gs_options.Self.result "S_id: %d\n" stmt.sid
 
 let print_simple_statement stmt = 
-  Gs_options.Self.result "S_id: %d\n" stmt.sid;
+ (* Gs_options.Self.result "S_id: %d\n" stmt.sid; *)
   match stmt.skind with
   | If (e,b1,b2,loc) -> Gs_options.Self.result "if (%a)" pp_exp e
   | _ -> Gs_options.Self.result "%a" pp_stmt stmt
@@ -128,19 +128,23 @@ let print_path edges_list =
            ) edges_list
 
 
-let print_type vcgen = 
+let rec print_type vcgen = 
  match vcgen.stype with 
 | StartS -> Gs_options.Self.result "Stype: StartS"  
 | EndS -> Gs_options.Self.result "Stype: EndS" 
 | SimpleS -> Gs_options.Self.result "Stype: SimpleS"                                     (* The statement is SimpleS, if contains no block *)
-| IfS  (_,_) -> Gs_options.Self.result "Stype: IfS"      (* The statement is Ifs, if contains a If with blocks *)
-| BlockS _ -> Gs_options.Self.result "Stype: BlockS"    
-| LoopS _ -> Gs_options.Self.result "Stype: LoopS"   
+| IfS  (a,b) -> Gs_options.Self.result "Stype: IfS";
+                  print_vcgen a;
+                  print_vcgen b
+| BlockS e -> Gs_options.Self.result "Stype: BlockS";
+              print_vcgen e   
+| LoopS q -> Gs_options.Self.result "Stype: LoopS";
+              print_vcgen q
 
-
-let print_vcgen l =
+and print_vcgen l =
     List.iter(
             fun x ->   Gs_options.Self.result "--------------------------\n\n";
                      print_statement x.statement;
+                     print_why3_term x.po.proof_obligation;
                      print_type x
            ) l

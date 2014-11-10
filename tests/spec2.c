@@ -5,7 +5,7 @@
 void f(int x,int y){
 	
 	if(y>0){
-	x = x+100;
+	x = 100;
 	x = x+50;
 	x = x-100;
 	}else{

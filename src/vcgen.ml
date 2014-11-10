@@ -40,6 +40,30 @@ type fun_dec =
 }
 
 
+
+(*
+let wp_hash = Hashtbl.create 257
+
+let add_wp kf stmt wp =
+  Hashtbl.add wp_hash (kf,stmt.sid) wp
+
+let get_wp kf stmt  =
+  try
+    Hashtbl.find wp_hash (kf,stmt.sid)
+  with Not_found ->
+    Gs_options.Self.fatal "Wp not found" 
+
+let sp_hash = Hashtbl.create 257
+
+let add_sp kf stmt sp =
+  Hashtbl.add sp_hash (kf,stmt.sid) sp
+
+let get_sp kf stmt  =
+  try
+    Hashtbl.find sp_hash (kf,stmt.sid)
+  with Not_found ->
+    Gs_options.Self.fatal "Sp not found" 
+*)
 let fun_hash = Hashtbl.create 257
 
 let add_fun kf fun_dec =
@@ -300,7 +324,7 @@ let conditional_wp statement exp_term predicate vcgen_result_b1_list vcgen_resul
   let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in
   let inits1 = [build_vcgen_result_simple statement predicate] in
   let inits2 = [build_vcgen_result_simple statement predicate] in
-	build_vcgen_result_if statement new_predicate  (inits1 @ vcgen_result_b1_list @ succs1) (inits2 @ vcgen_result_b2_list @ succs2)
+	build_vcgen_result_if statement new_predicate vcgen_result_b1_list vcgen_result_b2_list
 
 
 (* Matches the statement with the definitions and replaces the predicate
@@ -377,7 +401,7 @@ let conditional_sp statement predicate predicateb1 predicateb2 vcgen_result_b1_l
   let (succ_statements2,p2) = get_succ_statement (List.rev vcgen_result_b2_list) in
   let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in
   let succs2 = List.map(fun x -> build_vcgen_result_simple x p2 ) succ_statements2 in
-  build_vcgen_result_if statement new_predicate ([build_vcgen_result_simple statement predicate] @ vcgen_result_b1_list @ succs1) ([build_vcgen_result_simple statement predicate] @ vcgen_result_b2_list @ succs2)
+  build_vcgen_result_if statement new_predicate vcgen_result_b1_list   vcgen_result_b2_list
 
 
 (* Matches the instruction with the definitions and replaces the predicate
@@ -459,7 +483,7 @@ let rec replace_statement_sp statement predicate =
       let predicateb1 = Logic_const.pand (pred_logic_e,predicate) in
       let predicateb2 = Logic_const.pand (n_pred_logic_e,predicate) in
       let stmts1 = b1.bstmts in
-      let stmts2 = b1.bstmts in
+      let stmts2 = b2.bstmts in
       let vcgen_result_b1_list = sequence stmts1 predicateb1 replace_statement_sp in
       let vcgen_result_b2_list = sequence stmts2 predicateb2 replace_statement_sp in
       conditional_sp statement predicate predicateb1 predicateb2 vcgen_result_b1_list vcgen_result_b2_list
