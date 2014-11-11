@@ -1,10 +1,12 @@
 open Cil_types
+open Printer
 open Why3
 open Towhy3
 open Vcgen
 open Provers
 open Slicing
 open Graph
+
 
 module Node = struct
 	type t = stmt
@@ -33,6 +35,11 @@ module W = struct
   let compare = compare
 end
 module Dij = Path.Dijkstra(G)(W)
+
+
+
+
+
 
 
 let is_empty l =
@@ -115,15 +122,15 @@ let add_vertex_and_edges x g start_stmt end_stmt =
     in                  
     List.iter(fun edge -> G.add_edge_e g edge) succs_edges
 
-let create_complex_types x g start_stmt end_stmt =
+let rec create_complex_types x g start_stmt end_stmt =
   match x.stype with
   | IfS (vcl1,vcl2) -> add_vertex_and_edges x g start_stmt end_stmt;
-                       List.iter(fun x -> add_vertex_and_edges x g start_stmt end_stmt) vcl1;
-                       List.iter(fun x -> add_vertex_and_edges x g start_stmt end_stmt) vcl2
+                       List.iter(fun x -> create_complex_types x g start_stmt end_stmt) vcl1;
+                       List.iter(fun x -> create_complex_types x g start_stmt end_stmt) vcl2
   | BlockS vclb ->     add_vertex_and_edges x g start_stmt end_stmt;
-                       List.iter(fun x -> add_vertex_and_edges x g start_stmt end_stmt) vclb
+                       List.iter(fun x -> create_complex_types x g start_stmt end_stmt) vclb
   | LoopS  vcll ->     add_vertex_and_edges x g start_stmt end_stmt;
-                       List.iter(fun x -> add_vertex_and_edges x g start_stmt end_stmt) vcll
+                       List.iter(fun x -> create_complex_types x g start_stmt end_stmt) vcll
   | SimpleS ->         add_vertex_and_edges x g start_stmt end_stmt
   | StartS ->          add_vertex_and_edges x g start_stmt end_stmt
   | EndS ->            add_vertex_and_edges x g start_stmt end_stmt
@@ -216,6 +223,20 @@ let add_sliced_edges start_stmt end_stmt slices_results g =
   List.iter(fun x -> create_sliced_edge g x start_stmt end_stmt) valid_results;
   g
 
+
+
+(* Prints a statement *)
+let print_statement_aux stmt =
+  Gs_options.Self.result "Statement: %a" pp_stmt stmt;
+  Gs_options.Self.result "S_id: %d\n" stmt.sid
+
+let print_vertex_aux v =
+    let stmt = G.V.label v in
+    print_statement_aux stmt
+      
+
+
+
 let rec build_path edges_list  =
   match edges_list with
   | [] -> []
@@ -228,6 +249,8 @@ let get_w elem b g =
   | [] -> 0
   | x -> let v_b = List.map(fun x -> get_or_create x) b in
          let b_last_v = List.hd (List.rev v_b) in
+         print_vertex_aux elem;
+         print_vertex_aux b_last_v;
          try
           let (p,tw) = Dij.shortest_path g elem b_last_v in
           tw 
