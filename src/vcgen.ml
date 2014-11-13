@@ -394,9 +394,9 @@ let replace_sp lval exp predicate  =
 
 (* Conditional sp rule, with sequence rule already aplied to the two blocks*)
 let conditional_sp statement predicate predicateb1 predicateb2 vcgen_result_b1_list vcgen_result_b2_list =
-  let newpredicateb1 = ifVcgenResultIsEmpty (List.rev vcgen_result_b1_list) in
-  let newpredicateb2 = ifVcgenResultIsEmpty (List.rev vcgen_result_b2_list) in
-  let new_predicate = Logic_const.por (newpredicateb1, newpredicateb2) in
+  let newpredicateb1 = ifVcgenResultIsEmpty  vcgen_result_b1_list in
+  let newpredicateb2 = ifVcgenResultIsEmpty  vcgen_result_b2_list in
+  let new_predicate = Logic_const.por (predicateb1, predicateb2) in
   let (succ_statements1,p1) = get_succ_statement (List.rev vcgen_result_b1_list) in
   let (succ_statements2,p2) = get_succ_statement (List.rev vcgen_result_b2_list) in
   let succs1 = List.map(fun x -> build_vcgen_result_simple x p1 ) succ_statements1 in

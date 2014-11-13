@@ -197,9 +197,10 @@ and statement_kind_spec slicing_type elem vcgen_results_wp provers_list  =
   | StartS -> apply_slicing slicing_type elem vcgen_results_wp provers_list
   | EndS -> []
   | SimpleS -> apply_slicing slicing_type elem vcgen_results_wp provers_list
-  | IfS (vcl1,vcl2) -> (apply_slicing slicing_type elem vcgen_results_wp provers_list) @ 
-                       (apply_kind_spec slicing_type vcl1 (find_type true elem) provers_list) @ 
-                       (apply_kind_spec slicing_type vcl2 (find_type false elem) provers_list) @
+  | IfS (vcl1,vcl2) -> let succ_fi = List.hd vcgen_results_wp in
+                       (apply_slicing slicing_type elem vcgen_results_wp provers_list) @ 
+                       (apply_kind_spec slicing_type vcl1 ((find_type true elem) @ [succ_fi]) provers_list) @ 
+                       (apply_kind_spec slicing_type vcl2 ((find_type false elem) @ [succ_fi])  provers_list) @
                        (apply_slicing slicing_type elem (find_type true elem)  provers_list) @
                        (apply_slicing slicing_type elem (find_type false elem) provers_list) 
   | BlockS vclb -> (apply_slicing slicing_type elem vcgen_results_wp provers_list) @ (apply_kind_spec slicing_type vclb (find_type false elem ) provers_list) 

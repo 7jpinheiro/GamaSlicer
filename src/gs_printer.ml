@@ -35,8 +35,10 @@ let print_statement stmt =
 let print_simple_statement stmt = 
  (* Gs_options.Self.result "S_id: %d\n" stmt.sid; *)
   match stmt.skind with
-  | If (e,b1,b2,loc) -> Gs_options.Self.result "if (%a)" pp_exp e
-  | _ -> Gs_options.Self.result "%a" pp_stmt stmt
+  | If (e,b1,b2,loc) -> Gs_options.Self.result "if (%a)" pp_exp e;
+                        Gs_options.Self.result "S_id: %d\n" stmt.sid
+  | _ -> Gs_options.Self.result "%a" pp_stmt stmt;
+         Gs_options.Self.result "S_id: %d\n" stmt.sid
   
 
 (* Prints a term *)

@@ -50,10 +50,23 @@ let is_empty l =
 
 let vertex_hash = Hashtbl.create 257
 
+let cond_s_path_hash = Hashtbl.create 257
+
+let cond_vertex = ref []
+
+let cond_edges = ref []
+
 let getKey v =
   let stament = G.V.label v in
   let key = stament.sid in
   key
+
+let add_s_path elem s1 s2 = 
+  Hashtbl.add cond_s_path_hash (getKey elem) (s1,s2)
+
+let get_s_path elem =
+  Hashtbl.find cond_s_path_hash elem.sid
+
 
 let add_vertex v =
   let key = getKey v in 
@@ -67,7 +80,7 @@ let get_vertex key =
 
 let get_stmt_vertex x = (G.V.label x)
 
-let cond_vertex = ref []
+
 
 let get_or_create x = 
   try 
@@ -223,8 +236,6 @@ let add_sliced_edges start_stmt end_stmt slices_results g =
   List.iter(fun x -> create_sliced_edge g x start_stmt end_stmt) valid_results;
   g
 
-
-
 (* Prints a statement *)
 let print_statement_aux stmt =
   Gs_options.Self.result "Statement: %a" pp_stmt stmt;
@@ -233,27 +244,51 @@ let print_statement_aux stmt =
 let print_vertex_aux v =
     let stmt = G.V.label v in
     print_statement_aux stmt
-      
 
+let rec build_cond_path_aux p1 p2 =
+       match p1,p2 with
+       | [],[] -> []      
+       | x,y -> (build_path x) @ (build_path y)
+       | x,[] -> build_path x
+       | [], y -> build_path y
 
+and build_cond_path vertex =
+  let smt = get_stmt_vertex vertex in
+  begin
+    match smt.skind with
+    | If _ -> let (p1,p2) = get_s_path smt in
+              [vertex] @ build_cond_path_aux  p1  p2
+    | _ -> [vertex]
+  end
 
-let rec build_path edges_list  =
+and build_path edges_list  =
   match edges_list with
   | [] -> []
   | [e] -> [(G.E.src e)]@[(G.E.dst e)]
-  | x::tail -> (G.E.src x)::(build_path tail)   
+  | x::tail -> (G.E.src x) :: (build_path tail)   
 
-let get_w elem b g = 
+let get_w elem fi b g cg end_stmt = 
       Gs_options.Self.result "Getting branch weight!";
   match b with
-  | [] -> 0
+  | [] -> ([],0)
   | x -> let v_b = List.map(fun x -> get_or_create x) b in
+        let b_first = List.hd v_b in
          let b_last_v = List.hd (List.rev v_b) in
+         let stmt = get_stmt_vertex b_last_v in
+         let fi = List.hd (stmt.succs) in
+         let fi_v = 
+            begin
+            if (isReturnStmt fi.skind) 
+               then get_or_create end_stmt
+              else get_or_create fi 
+            end
+         in 
          print_vertex_aux elem;
          print_vertex_aux b_last_v;
          try
-          let (p,tw) = Dij.shortest_path g elem b_last_v in
-          tw 
+          let (p,tw) = Dij.shortest_path cg b_first fi_v in
+          List.iter(fun x -> cond_edges := x :: !cond_edges) v_b;
+          (p,tw) 
          with 
          | Not_found -> Gs_options.Self.fatal "Shortest branch slice path not found!"
 
@@ -278,15 +313,16 @@ let fi =
    then get_or_create end_stmt
    else get_or_create fi 
 
-let add_conditional_edges g elem last_stmt = 
+let add_conditional_edges g cg elem last_stmt = 
   Gs_options.Self.result "Adding conditional edges!";
   let stmt = get_stmt_vertex elem in
   begin
     match stmt.skind with
-    | If (e,b1,b2,loc) -> let tw1 = get_w elem b1.bstmts g in
-                          let tw2 = get_w elem b2.bstmts g in 
+    | If (e,b1,b2,loc) -> let fi = get_fi_vertex b1.bstmts b2.bstmts last_stmt in 
+                          let (p1,tw1) = get_w elem fi b1.bstmts cg g last_stmt in
+                          let (p2,tw2) = get_w elem fi b2.bstmts cg g last_stmt in 
                           let total_w = 1 + tw1 + tw2 in
-                          let fi = get_fi_vertex b1.bstmts b2.bstmts last_stmt in 
+                          add_s_path elem p1 p2; 
                           let edge = E.create elem total_w fi in
                           G.add_edge_e g edge
     | _ -> raise (Invalid_argument "Vertex not a conditional vertex in cond_vertex_list")
@@ -296,11 +332,13 @@ let slice g first_stmt last_stmt =
     Gs_options.Self.result "Calculating shortest slice path!";
   let first_vertex = get_or_create first_stmt in 
   let last_vertex = get_or_create last_stmt in
-  List.iter(fun x -> add_conditional_edges g x last_stmt ) !cond_vertex;
-
+  let cg = G.copy g in
+  List.iter(fun x -> add_conditional_edges g cg x last_stmt ) !cond_vertex;
+  List.iter(fun x -> G.remove_vertex g x ) !cond_edges;
   try
    let (p,tw) = Dij.shortest_path g first_vertex last_vertex in
-   build_path p 
+   let path = build_path p in
+   List.fold_right (fun x acc -> build_cond_path x @ acc ) path [] 
   with
   | Not_found -> Gs_options.Self.fatal "Shortest slice path not found!"
 
