@@ -39,8 +39,17 @@ module Dij = Path.Dijkstra(G)(W)
 
 
 
+type results =
+| V_result of stmt 
+| S_result of string
 
 
+let build_result_v_result vertex =
+  let stmt = G.V.label vertex in 
+  V_result stmt
+
+let build_result_s_result s =
+  S_result s 
 
 let is_empty l =
   match l with
@@ -48,9 +57,16 @@ let is_empty l =
   |x::y -> false
 
 
+let my_drop l =
+  match l with
+  |[] -> []
+  |l -> List.rev (List.tl (List.rev l))
+
 let vertex_hash = Hashtbl.create 257
 
 let cond_s_path_hash = Hashtbl.create 257
+
+let fi_hash = Hashtbl.create 257
 
 let cond_vertex = ref []
 
@@ -66,6 +82,13 @@ let add_s_path elem s1 s2 =
 
 let get_s_path elem =
   Hashtbl.find cond_s_path_hash elem.sid
+
+
+let add_fi elem fi  = 
+  Hashtbl.add fi_hash (getKey elem) fi
+
+let get_fi elem =
+  Hashtbl.find fi_hash elem.sid
 
 
 let add_vertex v =
@@ -241,24 +264,26 @@ let print_statement_aux stmt =
   Gs_options.Self.result "Statement: %a" pp_stmt stmt;
   Gs_options.Self.result "S_id: %d\n" stmt.sid
 
-let print_vertex_aux v =
-    let stmt = G.V.label v in
-    print_statement_aux stmt
+let rec convert_to_result l =
+    match l with
+    | [] -> []
+    | x :: y -> (build_result_v_result x) :: (convert_to_result y)
 
-let rec build_cond_path_aux p1 p2 =
+let rec build_cond_path_aux elem p1 p2 =
        match p1,p2 with
        | [],[] -> []      
-       | x,y -> (build_path x) @ (build_path y)
-       | x,[] -> build_path x
-       | [], y -> build_path y
+       | x,y ->   [(build_result_s_result "{" )] @ (convert_to_result (my_drop (build_path x))) @ [(build_result_s_result "}else{")] 
+                  @ (convert_to_result (my_drop (build_path y))) @ [(build_result_s_result"}")] 
+       | x,[] ->  [(build_result_s_result "{" )]@ (convert_to_result (my_drop (build_path x))) @ [(build_result_s_result"}")] 
+       | [], y -> [(build_result_s_result "{" )]@ (convert_to_result ( my_drop (build_path y)))@ [(build_result_s_result"}")]
 
 and build_cond_path vertex =
   let smt = get_stmt_vertex vertex in
   begin
     match smt.skind with
     | If _ -> let (p1,p2) = get_s_path smt in
-              [vertex] @ build_cond_path_aux  p1  p2
-    | _ -> [vertex]
+               (convert_to_result [vertex]) @ build_cond_path_aux smt  p1  p2
+    | _ -> (convert_to_result [vertex])
   end
 
 and build_path edges_list  =
@@ -283,8 +308,6 @@ let get_w elem fi b g cg end_stmt =
               else get_or_create fi 
             end
          in 
-         print_vertex_aux elem;
-         print_vertex_aux b_last_v;
          try
           let (p,tw) = Dij.shortest_path cg b_first fi_v in
           List.iter(fun x -> cond_edges := x :: !cond_edges) v_b;
@@ -318,11 +341,12 @@ let add_conditional_edges g cg elem last_stmt =
   let stmt = get_stmt_vertex elem in
   begin
     match stmt.skind with
-    | If (e,b1,b2,loc) -> let fi = get_fi_vertex b1.bstmts b2.bstmts last_stmt in 
+    | If (e,b1,b2,loc) -> let fi = get_fi_vertex b1.bstmts b2.bstmts last_stmt in
                           let (p1,tw1) = get_w elem fi b1.bstmts cg g last_stmt in
                           let (p2,tw2) = get_w elem fi b2.bstmts cg g last_stmt in 
                           let total_w = 1 + tw1 + tw2 in
                           add_s_path elem p1 p2; 
+                          add_fi elem fi;
                           let edge = E.create elem total_w fi in
                           G.add_edge_e g edge
     | _ -> raise (Invalid_argument "Vertex not a conditional vertex in cond_vertex_list")

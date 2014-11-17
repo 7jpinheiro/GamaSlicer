@@ -20,6 +20,7 @@ type slicing_result =
 
 let comp_wp = Hashtbl.create 257
 
+
 let add_comp_wp stmt vcgen =
   Hashtbl.add comp_wp stmt.sid vcgen
 
@@ -139,7 +140,6 @@ and slicing slice_type vcgen_results provers_list =
 
 
 let equal_stmt statement1 statement2 =
-  print_aux statement1 statement2;
   Cil_datatype.Stmt.equal statement1 statement2
 
 let rec get_complex_type branch vc_sp vc_wp =

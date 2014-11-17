@@ -102,14 +102,13 @@ let slice_fun vc_type fun_dec kf provers_list =
                              let slicing_results = slicing2 vc_type vcg_sp vcg_wp provers_list in
                                 print_slice_results slicing_results;
                              let n_slice_g = Slicegraph.add_sliced_edges start_stmt end_stmt slicing_results slice_g in
+                              print_vertex slice_g;
+                            print_edges slice_g;
                              let sliced_path = Slicegraph.slice n_slice_g start_stmt end_stmt in
-                            (*  print_vertex slice_g;
-                            print_edges slice_g; *)
                              sliced_path 
     end
     in
-
-    print_path sliced_path
+    print_results sliced_path
 
 
   (* Main function *)

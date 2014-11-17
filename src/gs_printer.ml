@@ -35,10 +35,8 @@ let print_statement stmt =
 let print_simple_statement stmt = 
  (* Gs_options.Self.result "S_id: %d\n" stmt.sid; *)
   match stmt.skind with
-  | If (e,b1,b2,loc) -> Gs_options.Self.result "if (%a)" pp_exp e;
-                        Gs_options.Self.result "S_id: %d\n" stmt.sid
-  | _ -> Gs_options.Self.result "%a" pp_stmt stmt;
-         Gs_options.Self.result "S_id: %d\n" stmt.sid
+  | If (e,b1,b2,loc) -> Format.printf  "if (%a)\n" pp_exp e
+  | _ -> Format.printf  "%a\n" pp_stmt stmt
   
 
 (* Prints a term *)
@@ -120,15 +118,40 @@ let print_edges g =
                    Gs_options.Self.result "--------->";
                    print_statement stmt2
       ) g
+
+
+let print_fi () =  
+ Gs_options.Self.result "Printing fi stmt";
+  Hashtbl.iter( fun key value -> 
+                                 let stmt =  (G.V.label value) in
+                                 Gs_options.Self.result "KEY: %d -> \n" key;
+                                 Gs_options.Self.result "fi : %a" pp_stmt stmt;
+                                 Gs_options.Self.result "fi_S_id: %d\n" stmt.sid 
+
+              ) fi_hash
   
 let print_path edges_list =
   Gs_options.Self.result "--------------------------\n\n";
   Gs_options.Self.result "Sliced program: ";
+  let print_stack = Stack.create () in
   List.iter(
             fun x -> let stmt = (G.V.label x) in
-                     print_simple_statement stmt
+                     print_simple_statement stmt 
+                    (*   print_final stmt print_stack *)
            ) edges_list
 
+let print_result r =
+  match r with
+  | V_result stmt -> print_simple_statement stmt
+  | S_result s ->  Format.printf  "%s\n" s
+
+
+let print_results results = 
+  Gs_options.Self.result "--------------------------\n\n";
+  Gs_options.Self.result "Sliced program: ";
+  List.iter(
+            fun x -> print_result x 
+           ) results
 
 let rec print_type vcgen = 
  match vcgen.stype with 
